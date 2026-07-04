@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# large source data files (not needed in repo)
+kanjidic2.xml
+kanjidic2.json
+kanjidic2_joyo.json
+jpn_sentences.tsv.bz2
+jpn_indices.tar.bz2
+eng_sentences.tsv.bz2
+translation_cache.json
+links.csv.bz2
+links.tar.bz2
+
+# environment
+.env
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
