@@ -3,6 +3,7 @@
   import { fade, fly } from 'svelte/transition';
 
   export let page;
+  export let isDark;
   export let availableLangs;
   export let selectedLang;
   export let LANG_NAMES;
@@ -43,6 +44,16 @@
     dispatch('selectlang', lang);
     showMenu = false;
     closeAll();
+  }
+
+  function toggleTheme() {
+    dispatch('toggletheme');
+  }
+
+  function resetProgress() {
+    showMenu = false;
+    closeAll();
+    dispatch('reset');
   }
 
   function onWindowClick(e) {
@@ -125,6 +136,18 @@
           {/each}
         </div>
       {/if}
+
+      <div class="dd-divider"></div>
+
+      <button class="dd-item" on:click={toggleTheme}>
+        <span>{isDark ? 'Light mode ☀' : 'Dark mode 🌙'}</span>
+      </button>
+
+      <div class="dd-divider"></div>
+
+      <button class="dd-item dd-danger" on:click={resetProgress}>
+        Reset Progress
+      </button>
     </div>
   {/if}
 </div>
@@ -234,5 +257,14 @@
   .check {
     color: #22c55e;
     font-size: 0.78rem;
+  }
+
+  .dd-danger {
+    color: #f87171;
+  }
+
+  .dd-danger:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
   }
 </style>
