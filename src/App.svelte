@@ -350,7 +350,7 @@
 	// ─── Lifecycle ────────────────────────────────────────────────────────────
 	onMount(async () => {
 		try {
-			const res = await fetch("/kanji.json");
+			const res = await fetch(`${import.meta.env.BASE_URL}kanji.json`);
 			kanjiList = await res.json();
 			// Collect available meaning languages from the data
 			const langSet = new Set();
