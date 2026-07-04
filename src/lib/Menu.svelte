@@ -3,17 +3,15 @@
   import { fade, fly } from 'svelte/transition';
 
   export let page;
-  export let srQueue;
   export let availableLangs;
   export let selectedLang;
   export let LANG_NAMES;
 
   const dispatch = createEventDispatcher();
 
-  let showMenu      = false;
-  let showLearnMenu = false;
-  let showViewMenu  = false;
-  let showLangMenu  = false;
+  let showMenu = false;
+  let showViewMenu = false;
+  let showLangMenu = false;
 
   function toggleMenu() {
     showMenu = !showMenu;
@@ -21,27 +19,18 @@
   }
 
   function closeAll() {
-    showLearnMenu = false;
-    showViewMenu  = false;
-    showLangMenu  = false;
-  }
-
-  function onLearnToggle() {
-    showLearnMenu = !showLearnMenu;
-    showViewMenu  = false;
-    showLangMenu  = false;
+    showViewMenu = false;
+    showLangMenu = false;
   }
 
   function onViewToggle() {
-    showViewMenu  = !showViewMenu;
-    showLearnMenu = false;
-    showLangMenu  = false;
+    showViewMenu = !showViewMenu;
+    showLangMenu = false;
   }
 
   function onLangToggle() {
-    showLangMenu  = !showLangMenu;
-    showLearnMenu = false;
-    showViewMenu  = false;
+    showLangMenu = !showLangMenu;
+    showViewMenu = false;
   }
 
   function navigate(p) {
@@ -75,44 +64,16 @@
   >···</button>
 
   {#if showMenu}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="dropdown" transition:fly={{ y: -6, duration: 150 }} on:click|stopPropagation>
-
-      <!-- ── Learn ── -->
-      <button class="dd-item dd-group" on:click|stopPropagation={onLearnToggle}>
-        <span class:group-active={page === 'learn' || page === 'learn-sr'}>Learn</span>
-        <span class="chevron">{showLearnMenu ? '▴' : '▾'}</span>
+    <div class="dropdown" transition:fly={{ y: -6, duration: 150 }}>
+      <button class="dd-item" class:dd-active={page === 'learn'} on:click={() => navigate('learn')}>
+        <span>Learn</span>
+        {#if page === 'learn'}<span class="check">✓</span>{/if}
       </button>
-      {#if showLearnMenu}
-        <div class="sub-panel" transition:fade={{ duration: 100 }}>
-          <button
-            class="dd-item sub-item"
-            class:dd-active={page === 'learn'}
-            on:click={() => navigate('learn')}
-          >
-            Normal
-            {#if page === 'learn'}<span class="check">✓</span>{/if}
-          </button>
-          <button
-            class="dd-item sub-item"
-            class:dd-active={page === 'learn-sr'}
-            on:click={() => navigate('learn-sr')}
-          >
-            SR Only
-            {#if srQueue.length > 0}
-              <span class="dd-badge">{srQueue.length}</span>
-            {:else if page === 'learn-sr'}
-              <span class="check">✓</span>
-            {/if}
-          </button>
-        </div>
-      {/if}
 
       <div class="dd-divider"></div>
 
-      <!-- ── View ── -->
       <button class="dd-item dd-group" on:click|stopPropagation={onViewToggle}>
-        <span class:group-active={page === 'stack-current' || page === 'stack-sr'}>View</span>
+        <span class:group-active={page === 'stack-current' || page === 'stack-learned'}>View</span>
         <span class="chevron">{showViewMenu ? '▴' : '▾'}</span>
       </button>
       {#if showViewMenu}
@@ -127,18 +88,17 @@
           </button>
           <button
             class="dd-item sub-item"
-            class:dd-active={page === 'stack-sr'}
-            on:click={() => navigate('stack-sr')}
+            class:dd-active={page === 'stack-learned'}
+            on:click={() => navigate('stack-learned')}
           >
-            SR Stack
-            {#if page === 'stack-sr'}<span class="check">✓</span>{/if}
+            Learned
+            {#if page === 'stack-learned'}<span class="check">✓</span>{/if}
           </button>
         </div>
       {/if}
 
       <div class="dd-divider"></div>
 
-      <!-- ── Language ── -->
       <button class="dd-item dd-group" on:click|stopPropagation={onLangToggle}>
         <span>Language <em>· {LANG_NAMES[selectedLang] ?? selectedLang}</em></span>
         <span class="chevron">{showLangMenu ? '▴' : '▾'}</span>
@@ -157,18 +117,19 @@
           {/each}
         </div>
       {/if}
-
     </div>
   {/if}
 </div>
 
 <style>
-  .menu-wrap { position: relative; }
+  .menu-wrap {
+    position: relative;
+  }
 
   .dots-btn {
     background: none;
     border: none;
-    color: #444;
+    color: var(--c-muted);
     cursor: pointer;
     padding: 6px 8px;
     line-height: 1;
@@ -177,19 +138,23 @@
     letter-spacing: 0.05em;
     transition: color 0.15s, background 0.15s;
   }
-  .dots-btn:hover { color: #aaa; background: #1e1e1e; }
+
+  .dots-btn:hover {
+    color: var(--c-muted2);
+    background: var(--c-border);
+  }
 
   .dropdown {
     position: absolute;
     right: 0;
     top: calc(100% + 4px);
     width: 220px;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
+    background: var(--c-bg2);
+    border: 1px solid var(--c-border);
     border-radius: 12px;
     overflow: hidden;
     z-index: 200;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   }
 
   .dd-item {
@@ -199,42 +164,67 @@
     width: 100%;
     background: none;
     border: none;
-    color: #bbb;
+    color: var(--c-text2);
     font-size: 0.88rem;
     padding: 0.65rem 1rem;
     cursor: pointer;
     text-align: left;
     transition: background 0.1s, color 0.1s;
   }
-  .dd-item:hover  { background: #242424; color: #fff; }
-  .dd-active      { color: #fff !important; font-weight: 600; }
 
-  .dd-group       { color: #ddd; font-weight: 500; }
-  .group-active   { color: #fff; }
-
-  .dd-divider { height: 1px; background: #202020; margin: 2px 0; }
-
-  .dd-badge {
-    background: #c2410c;
-    color: #fff;
-    font-size: 0.68rem;
-    font-weight: 700;
-    border-radius: 10px;
-    padding: 1px 7px;
+  .dd-item:hover {
+    background: var(--c-item-hover);
+    color: var(--c-text);
   }
 
-  .chevron { font-size: 0.6rem; color: #555; }
+  .dd-active {
+    color: var(--c-text) !important;
+    font-weight: 600;
+  }
 
-  .sub-panel { background: #141414; border-top: 1px solid #1e1e1e; }
+  .dd-group {
+    color: var(--c-text2);
+    font-weight: 500;
+  }
+
+  .group-active {
+    color: var(--c-text);
+  }
+
+  .dd-divider {
+    height: 1px;
+    background: var(--c-border);
+    margin: 2px 0;
+  }
+
+  .chevron {
+    font-size: 0.6rem;
+    color: var(--c-muted);
+  }
+
+  .sub-panel {
+    background: var(--c-bg);
+    border-top: 1px solid var(--c-border);
+  }
 
   .sub-item {
     padding-left: 1.6rem;
-    color: #888;
+    color: var(--c-muted2);
     font-size: 0.84rem;
   }
-  .sub-item:hover { color: #ddd; }
 
-  .dd-group em { font-style: normal; color: #666; font-weight: 400; }
+  .sub-item:hover {
+    color: var(--c-text2);
+  }
 
-  .check { color: #22c55e; font-size: 0.78rem; }
+  .dd-group em {
+    font-style: normal;
+    color: var(--c-muted);
+    font-weight: 400;
+  }
+
+  .check {
+    color: #22c55e;
+    font-size: 0.78rem;
+  }
 </style>
