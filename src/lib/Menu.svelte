@@ -73,7 +73,7 @@
       <div class="dd-divider"></div>
 
       <button class="dd-item dd-group" on:click|stopPropagation={onViewToggle}>
-        <span class:group-active={page === 'stack-current' || page === 'stack-learned'}>View</span>
+        <span class:group-active={page === 'stack-current' || page === 'stack-learned' || page === 'review-learned'}>View</span>
         <span class="chevron">{showViewMenu ? '▴' : '▾'}</span>
       </button>
       {#if showViewMenu}
@@ -93,6 +93,14 @@
           >
             Learned
             {#if page === 'stack-learned'}<span class="check">✓</span>{/if}
+          </button>
+          <button
+            class="dd-item sub-item"
+            class:dd-active={page === 'review-learned'}
+            on:click={() => navigate('review-learned')}
+          >
+            Review Learned
+            {#if page === 'review-learned'}<span class="check">✓</span>{/if}
           </button>
         </div>
       {/if}

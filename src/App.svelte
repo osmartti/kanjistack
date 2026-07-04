@@ -45,6 +45,19 @@
   let swipeDeltaX = 0;
   let swipeActive = false;
 
+  let showOnboarding = false;
+  let onboardingDone = false;
+  let reviewPos = 0;
+  let reviewRevealed = false;
+  let listTouchId = null;
+  let listTouchStartX = 0;
+  let listTouchStartY = 0;
+  let listDeltaX = 0;
+  let listSwipeActive = false;
+
+  // KANJIDIC2 uses old 4-level JLPT (4=easiest=N5, 1=hardest≈N1/N2)
+  const JLPT_MAP = { 4: "N5", 3: "N4", 2: "N2/N3", 1: "N1/N2" };
+
   function getFlyParams(targetSel) {
     const kanjiEl = document.querySelector(".kanji-char");
     const targetEl = document.querySelector(targetSel);
@@ -92,6 +105,7 @@
         learnedKanji,
         readingLearned,
         isDark,
+        onboardingDone,
       });
     } catch (e) {
       console.warn("saveState failed:", e);
@@ -113,7 +127,9 @@
         learnedKanji = s.learnedKanji ?? [];
         readingLearned = s.readingLearned ?? {};
         isDark = s.isDark ?? true;
+        onboardingDone = s.onboardingDone ?? false;
         droppedCount = Math.max(droppedCount, learnedKanji.length);
+        if (!onboardingDone && learnedKanji.length === 0) showOnboarding = true;
       } else {
         initFresh();
       }
@@ -138,6 +154,10 @@
     isRepeat = false;
     swipeDeltaX = 0;
     swipeActive = false;
+    onboardingDone = false;
+    showOnboarding = true;
+    reviewPos = 0;
+    reviewRevealed = false;
   }
 
   function addNext() {
@@ -219,6 +239,65 @@
     if (swipeDeltaX > 60) onKnowIt();
     else if (swipeDeltaX < -60) onStillLearning();
     else swipeDeltaX = 0;
+  }
+
+  // ── List swipe (learned list) ────────────────────────────────────────────
+  function onListTouchStart(e, id) {
+    listTouchId = id;
+    listTouchStartX = e.touches[0].clientX;
+    listTouchStartY = e.touches[0].clientY;
+    listDeltaX = 0;
+    listSwipeActive = true;
+  }
+  function onListTouchMove(e) {
+    if (!listSwipeActive) return;
+    const dx = e.touches[0].clientX - listTouchStartX;
+    const dy = e.touches[0].clientY - listTouchStartY;
+    if (Math.abs(dx) > Math.abs(dy)) listDeltaX = dx;
+  }
+  function onListTouchEnd() {
+    if (!listSwipeActive) return;
+    listSwipeActive = false;
+    if (listDeltaX > 60 && listTouchId !== null) onUnlearn(listTouchId);
+    listTouchId = null;
+    listDeltaX = 0;
+  }
+
+  // ── Onboarding level selection ───────────────────────────────────────────
+  async function selectOnboardingLevel(jlptLevels) {
+    if (jlptLevels.length > 0) {
+      const toLearn = kanjiList
+        .map((k, idx) => ({ k, idx }))
+        .filter(({ k }) => jlptLevels.includes(k.jlpt))
+        .map(({ idx }) => idx);
+      learnedKanji = [...new Set([...learnedKanji, ...toLearn])];
+      droppedCount = learnedKanji.length;
+      windowKanji = windowKanji.filter((idx) => !toLearn.includes(idx));
+      while (windowKanji.length < WINDOW_SIZE && nextKanjiIndex < kanjiList.length) {
+        if (!learnedKanji.includes(nextKanjiIndex)) {
+          windowKanji = [...windowKanji, nextKanjiIndex];
+        }
+        nextKanjiIndex++;
+      }
+      currentPos = 0;
+    }
+    onboardingDone = true;
+    showOnboarding = false;
+    await saveState();
+  }
+
+  // ── Review learned navigation ────────────────────────────────────────────
+  $: reviewKanji = learnedKanji.length ? kanjiList[learnedKanji[Math.min(reviewPos, learnedKanji.length - 1)]] : null;
+  $: reviewKanjiIdx = learnedKanji.length ? learnedKanji[Math.min(reviewPos, learnedKanji.length - 1)] : -1;
+  function nextReview() {
+    if (!learnedKanji.length) return;
+    reviewRevealed = false;
+    reviewPos = (reviewPos + 1) % learnedKanji.length;
+  }
+  function prevReview() {
+    if (!learnedKanji.length) return;
+    reviewRevealed = false;
+    reviewPos = (reviewPos - 1 + learnedKanji.length) % learnedKanji.length;
   }
 
   async function onKnowIt() {
@@ -342,6 +421,34 @@
     <p class="muted">Incredible work.</p>
     <button class="reset-btn" on:click={confirmReset}>Start over</button>
   </div>
+{:else if showOnboarding && page === "learn"}
+  <div class="screen center onboarding">
+    <h2 class="onboard-title">KanjiStack</h2>
+    <p class="onboard-sub">What's your current kanji level?</p>
+    <div class="onboard-grid">
+      <button class="onboard-card" on:click={() => selectOnboardingLevel([])}>
+        <span class="onboard-level">Beginner</span>
+        <span class="onboard-desc">Start fresh · No kanji pre-learned</span>
+      </button>
+      <button class="onboard-card" on:click={() => selectOnboardingLevel([4])}>
+        <span class="onboard-level">N5</span>
+        <span class="onboard-desc">~{kanjiList.filter(k=>k.jlpt===4).length} kanji pre-learned</span>
+      </button>
+      <button class="onboard-card" on:click={() => selectOnboardingLevel([4, 3])}>
+        <span class="onboard-level">N4</span>
+        <span class="onboard-desc">~{kanjiList.filter(k=>k.jlpt>=3).length} kanji pre-learned</span>
+      </button>
+      <button class="onboard-card" on:click={() => selectOnboardingLevel([4, 3, 2])}>
+        <span class="onboard-level">N3</span>
+        <span class="onboard-desc">~{kanjiList.filter(k=>k.jlpt>=2).length} kanji pre-learned</span>
+      </button>
+      <button class="onboard-card" on:click={() => selectOnboardingLevel([4, 3, 2, 1])}>
+        <span class="onboard-level">N1/N2</span>
+        <span class="onboard-desc">~{kanjiList.filter(k=>k.jlpt!=null).length} kanji pre-learned</span>
+      </button>
+    </div>
+    <p class="onboard-note">Pre-learned kanji skip the learning window and go directly to your Learned list.</p>
+  </div>
 {:else if page === "learn"}
   <div class="screen column">
     <div class="progress-track">
@@ -435,7 +542,7 @@
 
         {#key currentKanjiIdx}
           {#if isRepeat}
-            <div class="repeat-badge">↩ repeat</div>
+            <div class="repeat-badge">repeat</div>
           {/if}
         {/key}
 
@@ -455,7 +562,7 @@
                 <span class="r-label">On</span>
                 <span class="r-texts">
                   {#each onyomi as r, i}
-                    {#if i > 0}<span class="r-sep"> </span>{/if}
+                    {#if i > 0}<span class="r-sep">·</span>{/if}
                     <button
                       class="r-btn"
                       class:r-learned={isReadingLearned(currentKanjiIdx, "on", i)}
@@ -470,7 +577,7 @@
                 <span class="r-label">Kun</span>
                 <span class="r-texts">
                   {#each kunyomi as r, i}
-                    {#if i > 0}<span class="r-sep"> </span>{/if}
+                    {#if i > 0}<span class="r-sep">·</span>{/if}
                     <button
                       class="r-btn"
                       class:r-learned={isReadingLearned(currentKanjiIdx, "kun", i)}
@@ -502,7 +609,7 @@
               </div>
             {/if}
             {#if current?.jlpt}
-              <span class="badge">JLPT N{current.jlpt}</span>
+              <span class="badge">JLPT {JLPT_MAP[current.jlpt] ?? `N${current.jlpt}`}</span>
             {/if}
           </div>
         {:else}
@@ -594,18 +701,115 @@
         {#each [...learnedKanji].reverse() as kanjiIdx}
           {@const k = kanjiList[kanjiIdx]}
           {#if k}
-            <div class="stack-item">
+            <div
+              class="stack-item"
+              style={listTouchId === kanjiIdx
+                ? `transform: translateX(${Math.min(120, Math.max(0, listDeltaX * 0.4))}px); transition: none; background: rgba(22,163,74,${Math.min(0.25, Math.max(0, listDeltaX) / 300)})`
+                : ""}
+              on:touchstart|passive={(e) => onListTouchStart(e, kanjiIdx)}
+              on:touchmove={onListTouchMove}
+              on:touchend={onListTouchEnd}
+            >
               <span class="stack-kanji">{k.l}</span>
               <div class="stack-info">
                 <span class="stack-meaning">{(k.meanings?.[selectedLang] ?? k.meanings?.en ?? []).slice(0, 3).join(", ")}</span>
                 <span class="stack-readings">{[...(k.on ?? []), ...(k.kun ?? [])].slice(0, 4).join("  ·  ")}</span>
               </div>
-              <button class="unlearn-btn" on:click={() => onUnlearn(kanjiIdx)} title="Move back to learning">↩</button>
+              <button class="unlearn-btn" on:click={() => onUnlearn(kanjiIdx)} title="Move back to learning">X</button>
             </div>
           {/if}
         {/each}
       {/if}
     </div>
+  </div>
+{:else if page === "review-learned"}
+  <div class="screen column">
+    <div class="sub-header">
+      <button class="back-btn" on:click={() => navigate("learn")}>‹ Back</button>
+      <span class="sub-title">Review Learned</span>
+      <span class="sub-count">{learnedKanji.length ? `${Math.min(reviewPos + 1, learnedKanji.length)} / ${learnedKanji.length}` : "0"}</span>
+      <Menu
+        {page}
+        {availableLangs}
+        {selectedLang}
+        {LANG_NAMES}
+        on:navigate={(e) => navigate(e.detail)}
+        on:selectlang={(e) => selectLang(e.detail)}
+      />
+    </div>
+    {#if learnedKanji.length === 0}
+      <div class="screen center">
+        <p class="muted">No learned kanji yet.</p>
+      </div>
+    {:else}
+      <div class="card" role="button" tabindex="0"
+        on:click={() => { reviewRevealed = !reviewRevealed; }}
+        on:keydown={(e) => e.key === "Enter" && (reviewRevealed = !reviewRevealed)}
+      >
+        <div class="card-inner">
+          {#key reviewKanjiIdx}
+            <div class="kanji-char" in:fade={{ duration: 180 }}>{reviewKanji?.l ?? ""}</div>
+          {/key}
+          {#if reviewRevealed}
+            <div class="details">
+              {#if (reviewKanji?.meanings?.[selectedLang] ?? reviewKanji?.meanings?.en ?? []).length}
+                <p class="meanings">{(reviewKanji?.meanings?.[selectedLang] ?? reviewKanji?.meanings?.en ?? []).join(", ")}</p>
+              {/if}
+              {#if (reviewKanji?.on ?? []).length}
+                <div class="reading-row">
+                  <span class="r-label">On</span>
+                  <span class="r-texts">
+                    {#each (reviewKanji?.on ?? []) as r, i}
+                      {#if i > 0}<span class="r-sep">·</span>{/if}
+                      <button class="r-btn" class:r-learned={isReadingLearned(reviewKanjiIdx, 'on', i)}
+                        on:click|stopPropagation={() => toggleReading(reviewKanjiIdx, 'on', i)}>{r}</button>
+                    {/each}
+                  </span>
+                </div>
+              {/if}
+              {#if (reviewKanji?.kun ?? []).length}
+                <div class="reading-row">
+                  <span class="r-label">Kun</span>
+                  <span class="r-texts">
+                    {#each (reviewKanji?.kun ?? []) as r, i}
+                      {#if i > 0}<span class="r-sep">·</span>{/if}
+                      <button class="r-btn" class:r-learned={isReadingLearned(reviewKanjiIdx, 'kun', i)}
+                        on:click|stopPropagation={() => toggleReading(reviewKanjiIdx, 'kun', i)}>{r}</button>
+                    {/each}
+                  </span>
+                </div>
+              {/if}
+              {#if reviewKanji?.ex}
+                <div class="reading-row ex-row">
+                  <span class="r-label">Ex</span>
+                  <div class="ex-block">
+                    <div class="example">
+                      {#each reviewKanji.ex.f as part}
+                        {#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
+                      {/each}
+                    </div>
+                    {#if reviewKanji.ex.t}
+                      {#each Object.entries(reviewKanji.ex.t) as [, text]}
+                        <p class="ex-trans">{text}</p>
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+              {#if reviewKanji?.jlpt}
+                <span class="badge">JLPT {JLPT_MAP[reviewKanji.jlpt] ?? `N${reviewKanji.jlpt}`}</span>
+              {/if}
+            </div>
+          {:else}
+            <p class="tap-hint">tap to reveal</p>
+          {/if}
+        </div>
+      </div>
+      <div class="review-nav">
+        <button class="review-btn" on:click={prevReview}>‹ Prev</button>
+        <button class="review-btn" on:click={nextReview}>Next ›</button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -616,13 +820,13 @@
     --c-bg3: #222;
     --c-border: #1e1e1e;
     --c-text: #f0f0f0;
-    --c-text2: #d1d5db;
-    --c-muted: #555;
-    --c-muted2: #888;
+    --c-text2: #e2e8f0;
+    --c-muted: #6b7280;
+    --c-muted2: #9ca3af;
     --c-kanji: #ffffff;
-    --c-on: #94a3b8;
-    --c-ex: #7c8fa8;
-    --c-hint: #333;
+    --c-on: #a8b8cc;
+    --c-ex: #8fa5bc;
+    --c-hint: #3a3a3a;
     --c-progress-bg: #1e1e1e;
     --c-item-hover: #161616;
     --c-stack-border: #191919;
@@ -634,12 +838,12 @@
     --c-bg3: #ebebeb;
     --c-border: #e0e0e0;
     --c-text: #111111;
-    --c-text2: #333333;
-    --c-muted: #aaaaaa;
-    --c-muted2: #666666;
+    --c-text2: #1f2937;
+    --c-muted: #6b7280;
+    --c-muted2: #374151;
     --c-kanji: #111111;
-    --c-on: #4a5568;
-    --c-ex: #4a6070;
+    --c-on: #1e3a5f;
+    --c-ex: #1a3a50;
     --c-hint: #ccc;
     --c-progress-bg: #e0e0e0;
     --c-item-hover: #f0f0f0;
@@ -874,24 +1078,12 @@
     text-transform: uppercase;
     pointer-events: none;
     white-space: nowrap;
-    animation: repeatFade 3s ease forwards;
+    animation: repeatBlink 0.9s ease-in-out 4;
   }
 
-  @keyframes repeatFade {
-    0% {
-      opacity: 0;
-      transform: translateX(-50%) translateY(-4px);
-    }
-    15% {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    70% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-    }
+  @keyframes repeatBlink {
+    0%, 100% { opacity: 0.9; }
+    50%       { opacity: 0.15; }
   }
 
   .kanji-char {
@@ -969,6 +1161,7 @@
   .reading-row {
     display: flex;
     align-items: baseline;
+    justify-content: center;
     gap: 0.75rem;
   }
 
@@ -985,12 +1178,12 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 0.15rem 0;
+    gap: 0 0.5rem;
   }
 
   .r-sep {
-    color: var(--c-hint);
-    font-size: 0.8em;
+    color: var(--c-muted);
+    font-size: 0.75em;
     user-select: none;
   }
 
@@ -1165,19 +1358,21 @@
 
   .unlearn-btn {
     background: none;
-    border: 1px solid var(--c-hint);
-    color: var(--c-muted2);
-    font-size: 1rem;
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    color: #dc2626;
+    font-size: 0.85rem;
+    font-weight: 700;
     border-radius: 6px;
     padding: 4px 10px;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s;
     flex-shrink: 0;
+    letter-spacing: 0.05em;
   }
 
   .unlearn-btn:hover {
-    color: #f59e0b;
-    border-color: #f59e0b;
+    background: rgba(220, 38, 38, 0.12);
+    border-color: #dc2626;
   }
 
   .muted {
@@ -1235,4 +1430,53 @@
       transform: rotate(360deg);
     }
   }
-</style>
+
+  /* ── Onboarding ── */
+  .onboarding { gap: 1.2rem; padding: 2rem 1.5rem; }
+  .onboard-title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .onboard-sub { color: var(--c-muted2); font-size: 0.9rem; margin: 0; }
+  .onboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 380px;
+  }
+  .onboard-card {
+    background: var(--c-bg2);
+    border: 1px solid var(--c-border);
+    border-radius: 14px;
+    padding: 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .onboard-card:hover { border-color: var(--c-muted); background: var(--c-item-hover); }
+  .onboard-card:first-child { grid-column: 1 / -1; }
+  .onboard-level { font-size: 1.3rem; font-weight: 700; color: var(--c-text); }
+  .onboard-desc { font-size: 0.72rem; color: var(--c-muted2); text-align: center; line-height: 1.4; }
+  .onboard-note { font-size: 0.72rem; color: var(--c-muted); text-align: center; max-width: 300px; line-height: 1.5; }
+
+  /* ── Review navigation ── */
+  .review-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 64px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--c-border);
+  }
+  .review-btn {
+    background: none;
+    border: none;
+    color: var(--c-muted2);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: color 0.15s, background 0.15s;
+  }
+  .review-btn:hover { color: var(--c-text); background: var(--c-item-hover); }
+  .review-btn:active { color: var(--c-text2); }</style>
