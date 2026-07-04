@@ -121,34 +121,43 @@
 
 	// ─── Persistence ──────────────────────────────────────────────────────────
 	async function saveState() {
-		await set(DB_KEY, {
-			windowKanji,
-			nextKanjiIndex,
-			srQueue,
-			srStepMap,
-			droppedCount,
-			currentPos,
-			selectedLang,
-			weightMap,
-			seenIndices: [...seenSet],
-			lastKanjiIndex,
-		});
+		try {
+			await set(DB_KEY, {
+				windowKanji,
+				nextKanjiIndex,
+				srQueue,
+				srStepMap,
+				droppedCount,
+				currentPos,
+				selectedLang,
+				weightMap,
+				seenIndices: [...seenSet],
+				lastKanjiIndex,
+			});
+		} catch (e) {
+			console.warn('saveState failed:', e);
+		}
 	}
 
 	async function loadState() {
-		const s = await get(DB_KEY);
-		if (s) {
-			windowKanji    = s.windowKanji    ?? [];
-			nextKanjiIndex = s.nextKanjiIndex ?? 0;
-			srQueue        = s.srQueue        ?? [];
-			srStepMap      = s.srStepMap      ?? {};
-			droppedCount   = s.droppedCount   ?? 0;
-			currentPos     = s.currentPos     ?? 0;
-			selectedLang   = s.selectedLang   ?? "en";
-			weightMap      = s.weightMap      ?? {};
-			seenSet        = new Set(s.seenIndices ?? []);
-			lastKanjiIndex = s.lastKanjiIndex ?? -1;
-		} else {
+		try {
+			const s = await get(DB_KEY);
+			if (s) {
+				windowKanji    = s.windowKanji    ?? [];
+				nextKanjiIndex = s.nextKanjiIndex ?? 0;
+				srQueue        = s.srQueue        ?? [];
+				srStepMap      = s.srStepMap      ?? {};
+				droppedCount   = s.droppedCount   ?? 0;
+				currentPos     = s.currentPos     ?? 0;
+				selectedLang   = s.selectedLang   ?? "en";
+				weightMap      = s.weightMap      ?? {};
+				seenSet        = new Set(s.seenIndices ?? []);
+				lastKanjiIndex = s.lastKanjiIndex ?? -1;
+			} else {
+				initFresh();
+			}
+		} catch (e) {
+			console.warn('loadState failed, starting fresh:', e);
 			initFresh();
 		}
 	}
@@ -366,7 +375,8 @@
 			injectDueSR();
 				checkIfNew(); // mark initial kanji as new if unseen
 		} catch (e) {
-			loadError = e.message;
+			console.error('onMount error:', e);
+			loadError = `${e.constructor?.name ?? 'Error'}: ${e.message}`;
 		} finally {
 			loading = false;
 		}
