@@ -681,30 +681,33 @@
 								</span>
 							</div>
 						{/if}
-						{#if current?.ex}
-							<div class="reading-row ex-row">
-								<span class="r-label">Ex</span>
-								<div class="ex-block">
+						{#if current?.ex?.kun || current?.ex?.on}
+						<div class="reading-row ex-row">
+							<span class="r-label">Ex</span>
+							<div class="ex-block">
+								{#if current.ex.kun}
 									<div class="example">
-										{#each current.ex.f as part}
-											{#if part[1]}
-												<ruby
-													>{part[0]}<rt>{part[1]}</rt
-													></ruby
-												>
-											{:else}
-												{part[0]}
-											{/if}
+										{#each current.ex.kun.f as part}
+											{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
 										{/each}
 									</div>
-									{#if current.ex.t}
-										{#each Object.entries(current.ex.t) as [lang, text]}
-											<p class="ex-trans">{text}</p>
-										{/each}
+									{#if current.ex.kun.t?.en}
+										<p class="ex-trans">{current.ex.kun.t.en}</p>
 									{/if}
-								</div>
+								{/if}
+								{#if current.ex.on}
+									<div class="example">
+										{#each current.ex.on.f as part}
+											{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
+										{/each}
+									</div>
+									{#if current.ex.on.t?.en}
+										<p class="ex-trans">{current.ex.on.t.en}</p>
+									{/if}
+								{/if}
 							</div>
-						{/if}
+						</div>
+					{/if}
 						{#if current?.jlpt}
 							<span class="badge"
 								>JLPT {JLPT_MAP[current.jlpt] ??
@@ -1007,27 +1010,33 @@
 									</span>
 								</div>
 							{/if}
-							{#if reviewKanji?.ex}
-								<div class="reading-row ex-row">
-									<span class="r-label">Ex</span>
-									<div class="ex-block">
+							{#if reviewKanji?.ex?.kun || reviewKanji?.ex?.on}
+							<div class="reading-row ex-row">
+								<span class="r-label">Ex</span>
+								<div class="ex-block">
+									{#if reviewKanji.ex.kun}
 										<div class="example">
-											{#each reviewKanji.ex.f as part}
-												{#if part[1]}<ruby
-														>{part[0]}<rt
-															>{part[1]}</rt
-														></ruby
-													>{:else}{part[0]}{/if}
+											{#each reviewKanji.ex.kun.f as part}
+												{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
 											{/each}
 										</div>
-										{#if reviewKanji.ex.t}
-											{#each Object.entries(reviewKanji.ex.t) as [, text]}
-												<p class="ex-trans">{text}</p>
-											{/each}
+										{#if reviewKanji.ex.kun.t?.en}
+											<p class="ex-trans">{reviewKanji.ex.kun.t.en}</p>
 										{/if}
-									</div>
+									{/if}
+									{#if reviewKanji.ex.on}
+										<div class="example">
+											{#each reviewKanji.ex.on.f as part}
+												{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
+											{/each}
+										</div>
+										{#if reviewKanji.ex.on.t?.en}
+											<p class="ex-trans">{reviewKanji.ex.on.t.en}</p>
+										{/if}
+									{/if}
 								</div>
-							{/if}
+							</div>
+						{/if}
 							{#if reviewKanji?.jlpt}
 								<span class="badge"
 									>JLPT {JLPT_MAP[reviewKanji.jlpt] ??
@@ -1508,6 +1517,19 @@
 		align-items: flex-start;
 	}
 
+	.ex-type-label {
+	  font-size: 0.6rem;
+	  letter-spacing: 0.12em;
+	  text-transform: uppercase;
+	  color: #22c55e;
+	  margin-top: 0.55rem;
+	  font-weight: 600;
+	}
+
+	.ex-type-label:first-child { margin-top: 0; }
+
+	.ex-type-on { color: var(--c-on); }
+
 	.ex-block {
 		display: flex;
 		flex-direction: column;
@@ -1538,7 +1560,11 @@
 		font-size: 0.95rem;
 		color: var(--c-muted2);
 		line-height: 1.4;
-		margin: 0;
+		margin: 0 0 1rem;
+	}
+
+	.ex-block > .example:first-of-type ~ .example {
+		margin-top: 0;
 	}
 
 	.badge {
