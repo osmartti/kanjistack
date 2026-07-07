@@ -11,6 +11,7 @@
   const dispatch = createEventDispatcher();
 
   let showMenu = false;
+  let showLearnMenu = false;
   let showViewMenu = false;
   let showLangMenu = false;
 
@@ -20,17 +21,26 @@
   }
 
   function closeAll() {
+    showLearnMenu = false;
+    showViewMenu = false;
+    showLangMenu = false;
+  }
+
+  function onLearnToggle() {
+    showLearnMenu = !showLearnMenu;
     showViewMenu = false;
     showLangMenu = false;
   }
 
   function onViewToggle() {
     showViewMenu = !showViewMenu;
+    showLearnMenu = false;
     showLangMenu = false;
   }
 
   function onLangToggle() {
     showLangMenu = !showLangMenu;
+    showLearnMenu = false;
     showViewMenu = false;
   }
 
@@ -76,14 +86,22 @@
 
   {#if showMenu}
     <div class="dropdown" transition:fly={{ y: -6, duration: 150 }}>
-      <button class="dd-item" class:dd-active={page === 'learn'} on:click={() => navigate('learn')}>
-        <span>Learn</span>
-        {#if page === 'learn'}<span class="check">✓</span>{/if}
+      <button class="dd-item dd-group" on:click|stopPropagation={onLearnToggle}>
+        <span class:group-active={page === 'learn' || page === 'vocab-learn'}>Learn</span>
+        <span class="chevron">{showLearnMenu ? '▴' : '▾'}</span>
       </button>
-      <button class="dd-item" class:dd-active={page === 'vocab-learn'} on:click={() => navigate('vocab-learn')}>
-        <span>Vocab Learn</span>
-        {#if page === 'vocab-learn'}<span class="check">✓</span>{/if}
-      </button>
+      {#if showLearnMenu}
+        <div class="sub-panel" transition:fade={{ duration: 100 }}>
+          <button class="dd-item sub-item" class:dd-active={page === 'learn'} on:click={() => navigate('learn')}>
+            Kanji
+            {#if page === 'learn'}<span class="check">✓</span>{/if}
+          </button>
+          <button class="dd-item sub-item" class:dd-active={page === 'vocab-learn'} on:click={() => navigate('vocab-learn')}>
+            Vocab
+            {#if page === 'vocab-learn'}<span class="check">✓</span>{/if}
+          </button>
+        </div>
+      {/if}
 
       <div class="dd-divider"></div>
 

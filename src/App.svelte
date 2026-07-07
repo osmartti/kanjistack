@@ -30,6 +30,7 @@
 	let page = "learn";
 	let revealed = false;
 	let showInfo = false;
+	let showVocabInfo = false;
 
 	let weightMap = {};
 	let seenSet = new Set();
@@ -91,6 +92,9 @@
 
 	let vReviewPos = 0;
 	let vReviewRevealed = false;
+	let vReviewLevels = new Set([5, 4, 3, 2]); // selected JLPT levels for review
+	let vReviewStarted = false;
+	let vReviewQueue = []; // filtered subset of vLearnedVocab indices
 	let vReviewSwipeDeltaX = 0;
 	let vReviewSwipeActive = false;
 	let vReviewTouchStartX = 0;
@@ -139,8 +143,8 @@
 	$: vLearnedCount = Math.max(vDroppedCount, vLearnedVocab.length);
 	$: vProgressPct = vocabList.length ? Math.min(100, (vLearnedCount / vocabList.length) * 100) : 0;
 	$: vComplete = !vocabLoading && vocabList.length > 0 && vWindowVocab.length === 0 && vNextIdx >= vocabList.length;
-	$: vReviewEntry = vLearnedVocab.length ? vocabList[vLearnedVocab[Math.min(vReviewPos, vLearnedVocab.length - 1)]] : null;
-	$: vReviewIdx = vLearnedVocab.length ? vLearnedVocab[Math.min(vReviewPos, vLearnedVocab.length - 1)] : -1;
+	$: vReviewEntry = vReviewQueue.length ? vocabList[vReviewQueue[Math.min(vReviewPos, vReviewQueue.length - 1)]] : null;
+	$: vReviewIdx = vReviewQueue.length ? vReviewQueue[Math.min(vReviewPos, vReviewQueue.length - 1)] : -1;
 
 	async function saveState() {
 		try {
@@ -302,7 +306,11 @@
 		if (!vSwipeActive) return;
 		const dx = e.touches[0].clientX - vTouchStartX;
 		const dy = e.touches[0].clientY - vTouchStartY;
-		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) vSwipeDeltaX = dx;
+		const prev = vSwipeDeltaX;
+		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+			vSwipeDeltaX = dx;
+			if (Math.abs(prev) < 60 && Math.abs(vSwipeDeltaX) >= 60) vibrate(10);
+		}
 	}
 	function onVTouchEnd() {
 		if (!vSwipeActive) return; vSwipeActive = false;
@@ -318,7 +326,11 @@
 		if (!vReviewSwipeActive) return;
 		const dx = e.touches[0].clientX - vReviewTouchStartX;
 		const dy = e.touches[0].clientY - vReviewTouchStartY;
-		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) vReviewSwipeDeltaX = dx;
+		const prev = vReviewSwipeDeltaX;
+		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+			vReviewSwipeDeltaX = dx;
+			if (Math.abs(prev) < 60 && Math.abs(vReviewSwipeDeltaX) >= 60) vibrate(10);
+		}
 	}
 	function onVReviewTouchEnd() {
 		if (!vReviewSwipeActive) return; vReviewSwipeActive = false;
@@ -329,6 +341,7 @@
 
 	// ── Vocab game actions ───────────────────────────────────────────────────
 	async function onVKnowIt() {
+		vibrate([15, 60, 15]); // double pulse = success
 		vSwipeDeltaX = 0;
 		const idx = vWindowVocab[Math.min(vCurrentPos, vWindowVocab.length - 1)];
 		if (!vLearnedVocab.includes(idx)) {
@@ -342,6 +355,7 @@
 		await saveVocabState();
 	}
 	async function onVStillLearning() {
+		vibrate(25); // single pulse = keep going
 		vSwipeDeltaX = 0;
 		const posNow = Math.min(vCurrentPos, vWindowVocab.length - 1);
 		const idxNow = vWindowVocab[posNow];
@@ -378,9 +392,25 @@
 	}
 
 	function vNextReview() {
-		if (!vLearnedVocab.length) return;
+		if (!vReviewQueue.length) return;
 		vReviewRevealed = false; vReviewSwipeDeltaX = 0;
-		vReviewPos = (vReviewPos + 1) % vLearnedVocab.length;
+		vReviewPos = (vReviewPos + 1) % vReviewQueue.length;
+	}
+
+	function startVocabReview() {
+		vReviewQueue = vLearnedVocab.filter((idx) => {
+			const v = vocabList[idx];
+			return v && vReviewLevels.has(v.jlpt);
+		});
+		vReviewPos = 0;
+		vReviewRevealed = false;
+		vReviewStarted = true;
+	}
+
+	function toggleVReviewLevel(lvl) {
+		vReviewLevels = new Set(vReviewLevels);
+		if (vReviewLevels.has(lvl)) vReviewLevels.delete(lvl);
+		else vReviewLevels.add(lvl);
 	}
 
 	function removeCurrent() {
@@ -435,6 +465,7 @@
 	}
 
 	function handleTap() {
+		if (showInfo) { showInfo = false; return; }
 		if (!revealed) revealed = true;
 	}
 
@@ -449,8 +480,11 @@
 		if (!swipeActive) return;
 		const dx = e.touches[0].clientX - touchStartX;
 		const dy = e.touches[0].clientY - touchStartY;
+		const prevDelta = swipeDeltaX;
 		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
 			swipeDeltaX = dx;
+			// Haptic tick when crossing the action threshold
+			if (Math.abs(prevDelta) < 60 && Math.abs(swipeDeltaX) >= 60) vibrate(10);
 		}
 	}
 
@@ -554,6 +588,7 @@
 	}
 
 	async function onKnowIt() {
+		vibrate([15, 60, 15]);
 		swipeDeltaX = 0;
 		const kanjiIdx =
 			windowKanji[Math.min(currentPos, windowKanji.length - 1)];
@@ -582,6 +617,7 @@
 	}
 
 	async function onStillLearning() {
+		vibrate(25);
 		swipeDeltaX = 0;
 		const posNow = Math.min(currentPos, windowKanji.length - 1);
 		const idxNow = windowKanji[posNow];
@@ -616,11 +652,17 @@
 		saveState();
 	}
 
+	function vibrate(pattern) {
+		try { navigator.vibrate?.(pattern); } catch (_) {}
+	}
+
 	function navigate(p) {
 		page = p;
 		showInfo = false;
+		showVocabInfo = false;
 		swipeDeltaX = 0;
 		swipeActive = false;
+		if (p !== "review-vocab") vReviewStarted = false;
 	}
 
 	function selectLang(lang) {
@@ -771,19 +813,10 @@
 				>Vocab</button>
 				<button
 					class="icon-btn"
-					on:click={() => {
-						showInfo = !showInfo;
-					}}
+					on:click={() => { showInfo = !showInfo; }}
 					aria-label="Info"
 				>
-					<svg
-						width="17"
-						height="17"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-					>
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<circle cx="12" cy="12" r="10" />
 						<line x1="12" y1="8" x2="12" y2="12" />
 						<line x1="12" y1="16" x2="12.01" y2="16" />
@@ -798,28 +831,19 @@
 					{LANG_NAMES}
 					on:navigate={(e) => navigate(e.detail)}
 					on:selectlang={(e) => selectLang(e.detail)}
-					on:toggletheme={() => {
-						isDark = !isDark;
-						saveState();
-					}}
+					on:toggletheme={() => { isDark = !isDark; saveState(); }}
 					on:reset={confirmReset}
 				/>
 			</div>
-		</div>
 
-		{#if showInfo}
-			<div class="info-panel" transition:fly={{ y: -10, duration: 200 }}>
-				<p>
-					<strong>Know It!</strong> — Mark this kanji as learned and bring
-					in a new one.
-				</p>
-				<p>
-					<strong>Still Learning</strong> — Keep it in rotation and see
-					another card next.
-				</p>
-				<p>Tap to highlight individual on/kun readings.</p>
-			</div>
-		{/if}
+			{#if showInfo}
+				<div class="info-panel" transition:fly={{ y: -10, duration: 200 }}>
+					<p><strong>Know It!</strong> — Mark this kanji as learned and bring in a new one.</p>
+					<p><strong>Still Learning</strong> — Keep it in rotation and see another card next.</p>
+					<p>Tap to highlight individual on/kun readings.</p>
+				</div>
+			{/if}
+		</div>
 
 		<div
 			class="card"
@@ -1320,12 +1344,27 @@
 			<div class="row-right">
 				<button class="mode-toggle" on:click={() => { vocabMode = false; navigate("learn"); }}>Kanji</button>
 				<button class="mode-toggle mode-active" on:click={() => navigate("vocab-learn")}>Vocab</button>
+				<button class="icon-btn" on:click={() => { showVocabInfo = !showVocabInfo; }} aria-label="Info">
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="12" r="10" />
+						<line x1="12" y1="8" x2="12" y2="12" />
+						<line x1="12" y1="16" x2="12.01" y2="16" />
+					</svg>
+				</button>
 				<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
 					on:navigate={(e) => navigate(e.detail)}
 					on:selectlang={(e) => selectLang(e.detail)}
 					on:toggletheme={() => { isDark = !isDark; saveState(); }}
 					on:reset={confirmReset} />
 			</div>
+
+			{#if showVocabInfo}
+				<div class="info-panel" transition:fly={{ y: -10, duration: 200 }}>
+					<p><strong>Know It!</strong> — Mark this word as learned and bring in a new one.</p>
+					<p><strong>Still Learning</strong> — Keep it in rotation and see another card next.</p>
+					<p>Swipe right to Know It!, swipe left to Still Learning.</p>
+				</div>
+			{/if}
 		</div>
 
 		{#if showVocabOnboarding}
@@ -1367,7 +1406,7 @@
 				class="card"
 				role="button"
 				tabindex="0"
-				on:click={() => { if (!vRevealed) vRevealed = true; }}
+				on:click={() => { if (showVocabInfo) { showVocabInfo = false; return; } if (!vRevealed) vRevealed = true; }}
 				on:keydown={(e) => e.key === "Enter" && (vRevealed = true)}
 				on:touchstart|passive={onVTouchStart}
 				on:touchmove={onVTouchMove}
@@ -1467,17 +1506,53 @@
 {:else if page === "review-vocab"}
 	<div class="screen column">
 		<div class="sub-header">
-			<button class="back-btn" on:click={() => navigate("vocab-learn")}>‹ Back</button>
+			<button class="back-btn" on:click={() => { vReviewStarted = false; navigate("vocab-learn"); }}>‹ Back</button>
 			<span class="sub-title">Review Vocab</span>
-			<span class="sub-count">{vLearnedVocab.length ? `${Math.min(vReviewPos + 1, vLearnedVocab.length)} / ${vLearnedVocab.length}` : "0"}</span>
+			<span class="sub-count">
+				{#if vReviewStarted && vReviewQueue.length}
+					{Math.min(vReviewPos + 1, vReviewQueue.length)} / {vReviewQueue.length}
+				{:else}
+					{vLearnedVocab.length} learned
+				{/if}
+			</span>
 			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => { isDark = !isDark; saveState(); }}
 				on:reset={confirmReset} />
 		</div>
-		{#if vLearnedVocab.length === 0}
-			<div class="screen center"><p class="muted">No learned vocabulary yet.</p></div>
+
+		{#if !vReviewStarted}
+			<!-- Level picker -->
+			<div class="screen center">
+				{#if vLearnedVocab.length === 0}
+					<p class="muted">No learned vocabulary yet.</p>
+				{:else}
+					<p class="review-pick-title">Select levels to review</p>
+					<div class="review-level-grid">
+						{#each [[5,"N5"],[4,"N4"],[3,"N3"],[2,"N2/N1"]] as [lvl, label]}
+							{@const count = vLearnedVocab.filter((i) => vocabList[i]?.jlpt === lvl).length}
+							<button
+								class="review-level-btn"
+								class:review-level-active={vReviewLevels.has(lvl)}
+								disabled={count === 0}
+								on:click={() => toggleVReviewLevel(lvl)}
+							>
+								<span class="rl-label">{label}</span>
+								<span class="rl-count">{count} words</span>
+							</button>
+						{/each}
+					</div>
+					{@const total = vLearnedVocab.filter((i) => vocabList[i] && vReviewLevels.has(vocabList[i].jlpt)).length}
+					<button
+						class="review-start-btn"
+						disabled={total === 0}
+						on:click={startVocabReview}
+					>Review {total} {total === 1 ? "word" : "words"}</button>
+				{/if}
+			</div>
+		{:else if vReviewQueue.length === 0}
+			<div class="screen center"><p class="muted">No words match the selected levels.</p></div>
 		{:else}
 			<div
 				class="card"
@@ -1645,6 +1720,7 @@
 		justify-content: space-between;
 		padding: 0.5rem 0.75rem 0.4rem;
 		flex-shrink: 0;
+		position: relative;
 	}
 
 	.stat-wrap {
@@ -1729,6 +1805,84 @@
 		letter-spacing: 0.08em;
 	}
 
+	.review-pick-title {
+		font-size: 1rem;
+		color: var(--c-muted2);
+		margin-bottom: 1.5rem;
+		font-weight: 500;
+	}
+
+	.review-level-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+		width: 100%;
+		max-width: 320px;
+		margin-bottom: 2rem;
+	}
+
+	.review-level-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 1rem 0.5rem;
+		background: var(--c-bg2);
+		border: 2px solid var(--c-border);
+		border-radius: 14px;
+		cursor: pointer;
+		color: var(--c-muted2);
+		transition: border-color 0.15s, background 0.15s, color 0.15s;
+	}
+
+	.review-level-btn:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+		border-color: #ef4444 !important;
+		background: rgba(239, 68, 68, 0.07) !important;
+	}
+
+	.review-level-btn.review-level-active {
+		border-color: #22c55e;
+		background: rgba(34, 197, 94, 0.1);
+		color: var(--c-text);
+	}
+
+	.rl-label {
+		font-size: 1.3rem;
+		font-weight: 700;
+	}
+
+	.rl-count {
+		font-size: 0.72rem;
+		color: var(--c-muted);
+	}
+
+	.review-level-btn.review-level-active .rl-count {
+		color: var(--c-muted2);
+	}
+
+	.review-start-btn {
+		padding: 0.85rem 2.5rem;
+		background: #22c55e;
+		color: #fff;
+		border: none;
+		border-radius: 50px;
+		font-size: 1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.15s, opacity 0.15s;
+	}
+
+	.review-start-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.review-start-btn:not(:disabled):hover {
+		background: #16a34a;
+	}
+
 	.icon-btn {
 		background: none;
 		border: none;
@@ -1750,7 +1904,11 @@
 	}
 
 	.info-panel {
-		margin: 0 0.75rem 0.5rem;
+		position: absolute;
+		top: calc(100% - 4px);
+		left: 0.75rem;
+		right: 0.75rem;
+		z-index: 100;
 		background: var(--c-bg2);
 		border: 1px solid var(--c-border);
 		border-radius: 12px;
@@ -1760,7 +1918,7 @@
 		gap: 0.45rem;
 		font-size: 0.83rem;
 		color: var(--c-muted2);
-		flex-shrink: 0;
+		box-shadow: 0 8px 24px rgba(0,0,0,0.25);
 	}
 
 	.info-panel strong {
