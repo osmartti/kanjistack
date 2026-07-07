@@ -80,38 +80,38 @@
         <span>Learn</span>
         {#if page === 'learn'}<span class="check">✓</span>{/if}
       </button>
+      <button class="dd-item" class:dd-active={page === 'vocab-learn'} on:click={() => navigate('vocab-learn')}>
+        <span>Vocab Learn</span>
+        {#if page === 'vocab-learn'}<span class="check">✓</span>{/if}
+      </button>
 
       <div class="dd-divider"></div>
 
       <button class="dd-item dd-group" on:click|stopPropagation={onViewToggle}>
-        <span class:group-active={page === 'stack-current' || page === 'stack-learned' || page === 'review-learned'}>View</span>
+        <span class:group-active={page === 'stack-current' || page === 'stack-learned' || page === 'review-learned' || page === 'vocab-learned' || page === 'review-vocab'}>View</span>
         <span class="chevron">{showViewMenu ? '▴' : '▾'}</span>
       </button>
       {#if showViewMenu}
         <div class="sub-panel" transition:fade={{ duration: 100 }}>
-          <button
-            class="dd-item sub-item"
-            class:dd-active={page === 'stack-current'}
-            on:click={() => navigate('stack-current')}
-          >
+          <button class="dd-item sub-item" class:dd-active={page === 'stack-current'} on:click={() => navigate('stack-current')}>
             Current Stack
             {#if page === 'stack-current'}<span class="check">✓</span>{/if}
           </button>
-          <button
-            class="dd-item sub-item"
-            class:dd-active={page === 'stack-learned'}
-            on:click={() => navigate('stack-learned')}
-          >
+          <button class="dd-item sub-item" class:dd-active={page === 'stack-learned'} on:click={() => navigate('stack-learned')}>
             Learned
             {#if page === 'stack-learned'}<span class="check">✓</span>{/if}
           </button>
-          <button
-            class="dd-item sub-item"
-            class:dd-active={page === 'review-learned'}
-            on:click={() => navigate('review-learned')}
-          >
+          <button class="dd-item sub-item" class:dd-active={page === 'review-learned'} on:click={() => navigate('review-learned')}>
             Review Learned
             {#if page === 'review-learned'}<span class="check">✓</span>{/if}
+          </button>
+          <button class="dd-item sub-item" class:dd-active={page === 'vocab-learned'} on:click={() => navigate('vocab-learned')}>
+            Vocab Learned
+            {#if page === 'vocab-learned'}<span class="check">✓</span>{/if}
+          </button>
+          <button class="dd-item sub-item" class:dd-active={page === 'review-vocab'} on:click={() => navigate('review-vocab')}>
+            Review Vocab
+            {#if page === 'review-vocab'}<span class="check">✓</span>{/if}
           </button>
         </div>
       {/if}

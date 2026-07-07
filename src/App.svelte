@@ -5,7 +5,7 @@
 	import Menu from "./lib/Menu.svelte";
 
 	const WINDOW_SIZE = 30;
-	const DB_KEY = "kanjistack_v1";
+	const DB_KEY = "kanjistack_v2";  // bumped: list now sorted by difficulty
 	const LANG_NAMES = {
 		en: "English",
 		fr: "Français",
@@ -62,6 +62,40 @@
 	// KANJIDIC2 uses old 4-level JLPT (4=easiest=N5, 1=hardest≈N1/N2)
 	const JLPT_MAP = { 4: "N5", 3: "N4", 2: "N2/N3", 1: "N1/N2" };
 
+	// Vocab JLPT: stored as 5=N5…2=N2/N1
+	const VOCAB_DB_KEY = "kanjistack_vocab_v2";  // bumped with kanji v2
+	const VOCAB_JLPT_MAP = { 5: "N5", 4: "N4", 3: "N3", 2: "N2/N1" };
+
+	let vocabList = [];
+	let vocabLoading = true;
+	let vocabLoadError = null;
+	let vocabMode = false; // false=kanji, true=vocab
+
+	let vWindowVocab = [];
+	let vNextIdx = 0;
+	let vDroppedCount = 0;
+	let vCurrentPos = 0;
+	let vLearnedVocab = [];
+	let vWeightMap = {};
+	let vSeenSet = new Set();
+	let vLastIdx = -1;
+	let vIsRepeat = false;
+	let vOnboardingDone = false;
+	let showVocabOnboarding = false;
+
+	let vRevealed = false;
+	let vSwipeDeltaX = 0;
+	let vSwipeActive = false;
+	let vTouchStartX = 0;
+	let vTouchStartY = 0;
+
+	let vReviewPos = 0;
+	let vReviewRevealed = false;
+	let vReviewSwipeDeltaX = 0;
+	let vReviewSwipeActive = false;
+	let vReviewTouchStartX = 0;
+	let vReviewTouchStartY = 0;
+
 	function getFlyParams(targetSel) {
 		const kanjiEl = document.querySelector(".kanji-char");
 		const targetEl = document.querySelector(targetSel);
@@ -97,6 +131,16 @@
 	$: if (typeof document !== "undefined") {
 		document.body.classList.toggle("light", !isDark);
 	}
+
+	// Vocab derived
+	$: vSafePos = vWindowVocab.length ? Math.min(vCurrentPos, vWindowVocab.length - 1) : 0;
+	$: vCurrentIdx = vWindowVocab[vSafePos] ?? -1;
+	$: vCurrent = vCurrentIdx >= 0 ? vocabList[vCurrentIdx] : null;
+	$: vLearnedCount = Math.max(vDroppedCount, vLearnedVocab.length);
+	$: vProgressPct = vocabList.length ? Math.min(100, (vLearnedCount / vocabList.length) * 100) : 0;
+	$: vComplete = !vocabLoading && vocabList.length > 0 && vWindowVocab.length === 0 && vNextIdx >= vocabList.length;
+	$: vReviewEntry = vLearnedVocab.length ? vocabList[vLearnedVocab[Math.min(vReviewPos, vLearnedVocab.length - 1)]] : null;
+	$: vReviewIdx = vLearnedVocab.length ? vLearnedVocab[Math.min(vReviewPos, vLearnedVocab.length - 1)] : -1;
 
 	async function saveState() {
 		try {
@@ -173,6 +217,170 @@
 			windowKanji = [...windowKanji, nextKanjiIndex];
 			nextKanjiIndex++;
 		}
+	}
+
+	// ── Vocab save/load/init ─────────────────────────────────────────────────
+	async function saveVocabState() {
+		try {
+			await set(VOCAB_DB_KEY, {
+				vWindowVocab, vNextIdx, vDroppedCount, vCurrentPos,
+				vLearnedVocab, vWeightMap,
+				vSeenIndices: [...vSeenSet], vLastIdx, vOnboardingDone,
+			});
+		} catch (e) { console.warn("saveVocabState failed:", e); }
+	}
+
+	async function loadVocabState() {
+		try {
+			const s = await get(VOCAB_DB_KEY);
+			if (s) {
+				vWindowVocab = s.vWindowVocab ?? [];
+				vNextIdx = s.vNextIdx ?? 0;
+				vDroppedCount = s.vDroppedCount ?? 0;
+				vCurrentPos = s.vCurrentPos ?? 0;
+				vLearnedVocab = s.vLearnedVocab ?? [];
+				vWeightMap = s.vWeightMap ?? {};
+				vSeenSet = new Set(s.vSeenIndices ?? []);
+				vLastIdx = s.vLastIdx ?? -1;
+				vOnboardingDone = s.vOnboardingDone ?? false;
+				vDroppedCount = Math.max(vDroppedCount, vLearnedVocab.length);
+				if (!vOnboardingDone && vLearnedVocab.length === 0) showVocabOnboarding = true;
+			} else {
+				initVocabFresh();
+			}
+		} catch (e) { initVocabFresh(); }
+	}
+
+	function initVocabFresh() {
+		const count = Math.min(WINDOW_SIZE, vocabList.length);
+		vWindowVocab = Array.from({ length: count }, (_, i) => i);
+		vNextIdx = count;
+		vDroppedCount = 0; vCurrentPos = 0;
+		vWeightMap = {}; vSeenSet = new Set(); vLastIdx = -1;
+		vLearnedVocab = [];
+		vOnboardingDone = false;
+		showVocabOnboarding = true;
+		vIsRepeat = false; vSwipeDeltaX = 0; vSwipeActive = false;
+		vReviewPos = 0; vReviewRevealed = false;
+	}
+
+	// ── Vocab window helpers ─────────────────────────────────────────────────
+	function vAddNext() {
+		if (vNextIdx < vocabList.length) { vWindowVocab = [...vWindowVocab, vNextIdx]; vNextIdx++; }
+	}
+	function vRemoveCurrent() {
+		vWindowVocab = vWindowVocab.filter((_, i) => i !== vCurrentPos);
+		if (vWindowVocab.length === 0) vCurrentPos = 0;
+		else if (vCurrentPos >= vWindowVocab.length) vCurrentPos = 0;
+	}
+	function vPickNextPos() {
+		if (vWindowVocab.length <= 1) return 0;
+		const candidates = vWindowVocab
+			.map((idx, pos) => ({ pos, weight: vWeightMap[idx] ?? 1 }))
+			.filter(({ pos }) => vWindowVocab[pos] !== vLastIdx);
+		const pool = candidates.length > 0 ? candidates
+			: vWindowVocab.map((idx, pos) => ({ pos, weight: vWeightMap[idx] ?? 1 }));
+		const total = pool.reduce((s, c) => s + c.weight, 0);
+		let r = Math.random() * total;
+		for (const c of pool) { r -= c.weight; if (r <= 0) return c.pos; }
+		return pool[pool.length - 1].pos;
+	}
+	function vCheckIfRepeat() {
+		if (!vWindowVocab.length) { vIsRepeat = false; return; }
+		const idx = vWindowVocab[Math.min(vCurrentPos, vWindowVocab.length - 1)];
+		if (idx === undefined) { vIsRepeat = false; return; }
+		if (vSeenSet.has(idx)) { vIsRepeat = true; return; }
+		vSeenSet.add(idx); vIsRepeat = false;
+	}
+
+	// ── Vocab touch handlers ─────────────────────────────────────────────────
+	function onVTouchStart(e) {
+		vTouchStartX = e.touches[0].clientX; vTouchStartY = e.touches[0].clientY;
+		vSwipeDeltaX = 0; vSwipeActive = true;
+	}
+	function onVTouchMove(e) {
+		if (!vSwipeActive) return;
+		const dx = e.touches[0].clientX - vTouchStartX;
+		const dy = e.touches[0].clientY - vTouchStartY;
+		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) vSwipeDeltaX = dx;
+	}
+	function onVTouchEnd() {
+		if (!vSwipeActive) return; vSwipeActive = false;
+		if (vSwipeDeltaX > 60) onVKnowIt();
+		else if (vSwipeDeltaX < -60) onVStillLearning();
+		else vSwipeDeltaX = 0;
+	}
+	function onVReviewTouchStart(e) {
+		vReviewTouchStartX = e.touches[0].clientX; vReviewTouchStartY = e.touches[0].clientY;
+		vReviewSwipeDeltaX = 0; vReviewSwipeActive = true;
+	}
+	function onVReviewTouchMove(e) {
+		if (!vReviewSwipeActive) return;
+		const dx = e.touches[0].clientX - vReviewTouchStartX;
+		const dy = e.touches[0].clientY - vReviewTouchStartY;
+		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) vReviewSwipeDeltaX = dx;
+	}
+	function onVReviewTouchEnd() {
+		if (!vReviewSwipeActive) return; vReviewSwipeActive = false;
+		if (vReviewSwipeDeltaX > 60) vNextReview();
+		else if (vReviewSwipeDeltaX < -60) { onVUnlearn(vReviewIdx); vNextReview(); }
+		else vReviewSwipeDeltaX = 0;
+	}
+
+	// ── Vocab game actions ───────────────────────────────────────────────────
+	async function onVKnowIt() {
+		vSwipeDeltaX = 0;
+		const idx = vWindowVocab[Math.min(vCurrentPos, vWindowVocab.length - 1)];
+		if (!vLearnedVocab.includes(idx)) {
+			vLearnedVocab = [...vLearnedVocab, idx];
+			vDroppedCount = Math.max(vDroppedCount + 1, vLearnedVocab.length);
+		}
+		vLastIdx = idx ?? -1;
+		vRemoveCurrent(); vAddNext();
+		vCurrentPos = vPickNextPos(); vCheckIfRepeat();
+		vRevealed = false;
+		await saveVocabState();
+	}
+	async function onVStillLearning() {
+		vSwipeDeltaX = 0;
+		const posNow = Math.min(vCurrentPos, vWindowVocab.length - 1);
+		const idxNow = vWindowVocab[posNow];
+		vWeightMap = { ...vWeightMap, [idxNow]: (vWeightMap[idxNow] ?? 1) + 1 };
+		vLastIdx = idxNow;
+		vCurrentPos = vPickNextPos(); vCheckIfRepeat();
+		vRevealed = false;
+		await saveVocabState();
+	}
+	async function onVUnlearn(idx) {
+		vLearnedVocab = vLearnedVocab.filter((i) => i !== idx);
+		vDroppedCount = Math.max(0, vDroppedCount - 1);
+		if (!vWindowVocab.includes(idx)) vWindowVocab = [idx, ...vWindowVocab];
+		await saveVocabState();
+	}
+
+	async function selectVocabOnboardingLevel(jlptLevels) {
+		if (jlptLevels.length > 0) {
+			const toLearn = vocabList
+				.map((v, idx) => ({ v, idx }))
+				.filter(({ v }) => jlptLevels.includes(v.jlpt))
+				.map(({ idx }) => idx);
+			vLearnedVocab = [...new Set([...vLearnedVocab, ...toLearn])];
+			vDroppedCount = vLearnedVocab.length;
+			vWindowVocab = vWindowVocab.filter((idx) => !toLearn.includes(idx));
+			while (vWindowVocab.length < WINDOW_SIZE && vNextIdx < vocabList.length) {
+				if (!vLearnedVocab.includes(vNextIdx)) vWindowVocab = [...vWindowVocab, vNextIdx];
+				vNextIdx++;
+			}
+			vCurrentPos = 0;
+		}
+		vOnboardingDone = true; showVocabOnboarding = false;
+		await saveVocabState();
+	}
+
+	function vNextReview() {
+		if (!vLearnedVocab.length) return;
+		vReviewRevealed = false; vReviewSwipeDeltaX = 0;
+		vReviewPos = (vReviewPos + 1) % vLearnedVocab.length;
 	}
 
 	function removeCurrent() {
@@ -431,8 +639,18 @@
 
 	onMount(async () => {
 		try {
-			const res = await fetch(`${import.meta.env.BASE_URL}kanji.json`);
-			kanjiList = await res.json();
+			const [kanjiRes, vocabRes] = await Promise.all([
+				fetch(`${import.meta.env.BASE_URL}kanji.json`),
+				fetch(`${import.meta.env.BASE_URL}vocab.json`),
+			]);
+			kanjiList = await kanjiRes.json();
+			vocabList = await vocabRes.json();
+			// Sort easiest → hardest so the sliding window progresses naturally.
+			// Kanji JLPT: 4=N5 (easiest), 3=N4, 2=N3, 1=N1/N2, undefined=last
+			kanjiList.sort((a, b) => (b.jlpt ?? 0) - (a.jlpt ?? 0));
+			// Vocab JLPT: 5=N5, 4=N4, 3=N3, 2=N2/N1, already pre-sorted but enforce
+			vocabList.sort((a, b) => (b.jlpt ?? 0) - (a.jlpt ?? 0));
+			vocabLoadError = null;
 			const langSet = new Set();
 			for (const k of kanjiList) {
 				if (k.meanings)
@@ -443,13 +661,15 @@
 			availableLangs = [...langSet].sort((a, b) =>
 				a === "en" ? -1 : b === "en" ? 1 : a.localeCompare(b),
 			);
-			await loadState();
+			await Promise.all([loadState(), loadVocabState()]);
 			checkIfRepeat();
+			vCheckIfRepeat();
 		} catch (e) {
 			console.error("onMount error:", e);
 			loadError = `${e.constructor?.name ?? "Error"}: ${e.message}`;
 		} finally {
 			loading = false;
+			vocabLoading = false;
 		}
 	});
 </script>
@@ -539,6 +759,16 @@
 			</div>
 
 			<div class="row-right">
+				<button
+					class="mode-toggle"
+					on:click={() => { vocabMode = false; navigate("learn"); }}
+					class:mode-active={!vocabMode}
+				>Kanji</button>
+				<button
+					class="mode-toggle"
+					on:click={() => { vocabMode = true; navigate("vocab-learn"); }}
+					class:mode-active={vocabMode}
+				>Vocab</button>
 				<button
 					class="icon-btn"
 					on:click={() => {
@@ -1077,6 +1307,244 @@
 			</div>
 		{/if}
 	</div>
+{:else if page === "vocab-learn"}
+	<div class="screen column">
+		<div class="progress-track">
+			<div class="progress-fill" style="width: {vProgressPct}%"></div>
+		</div>
+		<div class="stats-row">
+			<div class="stat-wrap">
+				<span class="stat-val">{vLearnedCount}</span>
+				<span class="stat-lbl">/ {vocabList.length} learned</span>
+			</div>
+			<div class="row-right">
+				<button class="mode-toggle" on:click={() => { vocabMode = false; navigate("learn"); }}>Kanji</button>
+				<button class="mode-toggle mode-active" on:click={() => navigate("vocab-learn")}>Vocab</button>
+				<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+					on:navigate={(e) => navigate(e.detail)}
+					on:selectlang={(e) => selectLang(e.detail)}
+					on:toggletheme={() => { isDark = !isDark; saveState(); }}
+					on:reset={confirmReset} />
+			</div>
+		</div>
+
+		{#if showVocabOnboarding}
+			<div class="screen center onboarding">
+				<h2 class="onboard-title">VocabStack</h2>
+				<p class="onboard-sub">What's your current vocabulary level?</p>
+				<div class="onboard-grid">
+					<button class="onboard-card" on:click={() => selectVocabOnboardingLevel([])}>
+						<span class="onboard-level">Beginner</span>
+						<span class="onboard-desc">Start fresh · No words pre-learned</span>
+					</button>
+					<button class="onboard-card" on:click={() => selectVocabOnboardingLevel([5])}>
+						<span class="onboard-level">N5</span>
+						<span class="onboard-desc">~{vocabList.filter((v) => v.jlpt === 5).length} words pre-learned</span>
+					</button>
+					<button class="onboard-card" on:click={() => selectVocabOnboardingLevel([5, 4])}>
+						<span class="onboard-level">N4</span>
+						<span class="onboard-desc">~{vocabList.filter((v) => v.jlpt >= 4).length} words pre-learned</span>
+					</button>
+					<button class="onboard-card" on:click={() => selectVocabOnboardingLevel([5, 4, 3])}>
+						<span class="onboard-level">N3</span>
+						<span class="onboard-desc">~{vocabList.filter((v) => v.jlpt >= 3).length} words pre-learned</span>
+					</button>
+					<button class="onboard-card" on:click={() => selectVocabOnboardingLevel([5, 4, 3, 2])}>
+						<span class="onboard-level">N2/N1</span>
+						<span class="onboard-desc">~{vocabList.filter((v) => v.jlpt != null).length} words pre-learned</span>
+					</button>
+				</div>
+				<p class="onboard-note">Pre-learned words go directly to your Learned list.</p>
+			</div>
+		{:else if vComplete}
+			<div class="screen center">
+				<div class="complete-icon">🎉</div>
+				<h2>All {vocabList.length} words mastered!</h2>
+				<p class="muted">Incredible work.</p>
+			</div>
+		{:else}
+			<div
+				class="card"
+				role="button"
+				tabindex="0"
+				on:click={() => { if (!vRevealed) vRevealed = true; }}
+				on:keydown={(e) => e.key === "Enter" && (vRevealed = true)}
+				on:touchstart|passive={onVTouchStart}
+				on:touchmove={onVTouchMove}
+				on:touchend={onVTouchEnd}
+				style="transform: translateX({Math.max(-100, Math.min(100, vSwipeDeltaX * 0.35))}px);
+					   transition: {vSwipeActive ? 'none' : 'transform 0.3s ease'}"
+			>
+				<div class="card-inner">
+					{#if vSwipeActive && Math.abs(vSwipeDeltaX) > 20}
+						<div class="swipe-overlay"
+							class:swipe-right={vSwipeDeltaX > 0}
+							class:swipe-left={vSwipeDeltaX < 0}
+							style="opacity: {Math.min(0.35, Math.abs(vSwipeDeltaX) / 200)}"></div>
+					{/if}
+					{#key vCurrentIdx}
+						{#if vIsRepeat}<div class="repeat-badge">repeat entry</div>{/if}
+					{/key}
+					{#key vCurrentIdx}
+						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>{vCurrent?.w ?? ""}</div>
+					{/key}
+					{#if vRevealed}
+						<div class="details">
+							<p class="vocab-reading">{vCurrent?.r ?? ""}</p>
+							{#if vCurrent?.m?.length}
+								<p class="meanings">{vCurrent.m.join(", ")}</p>
+							{/if}
+							{#if vCurrent?.ex}
+								<div class="reading-row ex-row">
+									<span class="r-label">Ex</span>
+									<div class="ex-block">
+										<div class="example">
+											{#each vCurrent.ex.f as part}
+												{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
+											{/each}
+										</div>
+										{#if vCurrent.ex.t?.en}
+											<p class="ex-trans">{vCurrent.ex.t.en}</p>
+										{/if}
+									</div>
+								</div>
+							{/if}
+							{#if vCurrent?.jlpt}
+								<span class="badge">JLPT {VOCAB_JLPT_MAP[vCurrent.jlpt] ?? `N${vCurrent.jlpt}`}</span>
+							{/if}
+							{#if vCurrent?.w}
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vCurrent.w)}%23sentences"
+									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
+							{/if}
+						</div>
+					{:else}
+						<p class="tap-hint">tap to reveal</p>
+					{/if}
+				</div>
+			</div>
+			<div class="btn-row" class:hidden={!vRevealed}>
+				{#if vRevealed}
+					<button class="action still-learning" on:click|stopPropagation={onVStillLearning}
+						in:fly={{ y: 48, duration: 240 }}>Still Learning</button>
+					<button class="action know" on:click|stopPropagation={onVKnowIt}
+						in:fly={{ y: 48, duration: 240, delay: 40 }}>Know It!</button>
+				{/if}
+			</div>
+		{/if}
+	</div>
+{:else if page === "vocab-learned"}
+	<div class="screen column">
+		<div class="sub-header">
+			<button class="back-btn" on:click={() => navigate("vocab-learn")}>‹ Back</button>
+			<span class="sub-title">Vocab Learned</span>
+			<span class="sub-count">{vLearnedVocab.length}</span>
+			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+				on:navigate={(e) => navigate(e.detail)}
+				on:selectlang={(e) => selectLang(e.detail)}
+				on:toggletheme={() => { isDark = !isDark; saveState(); }}
+				on:reset={confirmReset} />
+		</div>
+		<div class="stack-list">
+			{#if vLearnedVocab.length === 0}
+				<p class="stack-empty">No words learned yet.<br />Press "Know It!" to mark words as learned.</p>
+			{:else}
+				{#each [...vLearnedVocab].reverse() as vIdx}
+					{@const v = vocabList[vIdx]}
+					{#if v}
+						<div class="stack-item">
+							<span class="stack-kanji">{v.w}</span>
+							<div class="stack-info">
+								<span class="stack-meaning">{v.m.slice(0, 3).join(", ")}</span>
+								<span class="stack-readings">{v.r}</span>
+							</div>
+							<button class="unlearn-btn" on:click={() => onVUnlearn(vIdx)} title="Move back to learning">X</button>
+						</div>
+					{/if}
+				{/each}
+			{/if}
+		</div>
+	</div>
+{:else if page === "review-vocab"}
+	<div class="screen column">
+		<div class="sub-header">
+			<button class="back-btn" on:click={() => navigate("vocab-learn")}>‹ Back</button>
+			<span class="sub-title">Review Vocab</span>
+			<span class="sub-count">{vLearnedVocab.length ? `${Math.min(vReviewPos + 1, vLearnedVocab.length)} / ${vLearnedVocab.length}` : "0"}</span>
+			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+				on:navigate={(e) => navigate(e.detail)}
+				on:selectlang={(e) => selectLang(e.detail)}
+				on:toggletheme={() => { isDark = !isDark; saveState(); }}
+				on:reset={confirmReset} />
+		</div>
+		{#if vLearnedVocab.length === 0}
+			<div class="screen center"><p class="muted">No learned vocabulary yet.</p></div>
+		{:else}
+			<div
+				class="card"
+				role="button"
+				tabindex="0"
+				on:click={() => { vReviewRevealed = !vReviewRevealed; }}
+				on:keydown={(e) => e.key === "Enter" && (vReviewRevealed = !vReviewRevealed)}
+				on:touchstart|passive={onVReviewTouchStart}
+				on:touchmove={onVReviewTouchMove}
+				on:touchend={onVReviewTouchEnd}
+				style="transform: translateX({Math.max(-100, Math.min(100, vReviewSwipeDeltaX * 0.35))}px);
+					   transition: {vReviewSwipeActive ? 'none' : 'transform 0.3s ease'}"
+			>
+				<div class="card-inner">
+					{#if vReviewSwipeActive && Math.abs(vReviewSwipeDeltaX) > 20}
+						<div class="swipe-overlay"
+							class:swipe-right={vReviewSwipeDeltaX > 0}
+							class:swipe-left={vReviewSwipeDeltaX < 0}
+							style="opacity: {Math.min(0.35, Math.abs(vReviewSwipeDeltaX) / 200)}"></div>
+					{/if}
+					{#key vReviewIdx}
+						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>{vReviewEntry?.w ?? ""}</div>
+					{/key}
+					{#if vReviewRevealed}
+						<div class="details">
+							<p class="vocab-reading">{vReviewEntry?.r ?? ""}</p>
+							{#if vReviewEntry?.m?.length}
+								<p class="meanings">{vReviewEntry.m.join(", ")}</p>
+							{/if}
+							{#if vReviewEntry?.ex}
+								<div class="reading-row ex-row">
+									<span class="r-label">Ex</span>
+									<div class="ex-block">
+										<div class="example">
+											{#each vReviewEntry.ex.f as part}
+												{#if part[1]}<ruby>{part[0]}<rt>{part[1]}</rt></ruby>{:else}{part[0]}{/if}
+											{/each}
+										</div>
+										{#if vReviewEntry.ex.t?.en}
+											<p class="ex-trans">{vReviewEntry.ex.t.en}</p>
+										{/if}
+									</div>
+								</div>
+							{/if}
+							{#if vReviewEntry?.jlpt}
+								<span class="badge">JLPT {VOCAB_JLPT_MAP[vReviewEntry.jlpt] ?? `N${vReviewEntry.jlpt}`}</span>
+							{/if}
+							{#if vReviewEntry?.w}
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vReviewEntry.w)}%23sentences"
+									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
+							{/if}
+						</div>
+					{:else}
+						<p class="tap-hint">tap to reveal</p>
+					{/if}
+				</div>
+			</div>
+			<div class="review-nav" class:hidden={!vReviewRevealed}>
+				{#if vReviewRevealed}
+					<button class="review-btn review-unlearn"
+						on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
+					<button class="review-btn review-know"
+						on:click|stopPropagation={vNextReview}>Know It!</button>
+				{/if}
+			</div>
+		{/if}
+	</div>
 {/if}
 
 <style>
@@ -1228,6 +1696,37 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
+	}
+
+	.mode-toggle {
+		background: none;
+		border: 1px solid var(--c-border);
+		color: var(--c-muted);
+		cursor: pointer;
+		padding: 3px 9px;
+		font-size: 0.72rem;
+		font-weight: 600;
+		border-radius: 20px;
+		letter-spacing: 0.04em;
+		transition: background 0.15s, color 0.15s;
+	}
+	.mode-toggle.mode-active {
+		background: var(--c-text);
+		color: var(--c-bg);
+		border-color: var(--c-text);
+	}
+
+	.vocab-word {
+		font-size: clamp(2.8rem, 18vw, 5.5rem) !important;
+		letter-spacing: 0.05em;
+	}
+
+	.vocab-reading {
+		font-size: 1.5rem;
+		color: var(--c-on);
+		margin: 0.1rem 0 0.5rem;
+		text-align: center;
+		letter-spacing: 0.08em;
 	}
 
 	.icon-btn {
