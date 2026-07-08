@@ -678,7 +678,10 @@
 		if (confirm("Reset all progress? This cannot be undone.")) {
 			initFresh();
 			revealed = false;
-			await saveState();
+			initVocabFresh();
+			vocabMode = false;
+			page = "learn";
+			await Promise.all([saveState(), saveVocabState()]);
 		}
 	}
 
