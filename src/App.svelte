@@ -85,6 +85,7 @@
 	let showVocabOnboarding = false;
 
 	let vRevealed = false;
+	let vFuriganaRevealed = false;
 	let vSwipeDeltaX = 0;
 	let vSwipeActive = false;
 	let vTouchStartX = 0;
@@ -92,6 +93,7 @@
 
 	let vReviewPos = 0;
 	let vReviewRevealed = false;
+	let vReviewFuriganaRevealed = false;
 	let vReviewLevels = new Set([5, 4, 3, 2]); // selected JLPT levels for review
 	let vReviewStarted = false;
 	let vReviewQueue = []; // filtered subset of vLearnedVocab indices
@@ -265,7 +267,8 @@
 		vOnboardingDone = false;
 		showVocabOnboarding = true;
 		vIsRepeat = false; vSwipeDeltaX = 0; vSwipeActive = false;
-		vReviewPos = 0; vReviewRevealed = false;
+		vReviewPos = 0; vReviewRevealed = false; vReviewFuriganaRevealed = false;
+		vRevealed = false; vFuriganaRevealed = false;
 	}
 
 	// ── Vocab window helpers ─────────────────────────────────────────────────
@@ -351,7 +354,7 @@
 		vLastIdx = idx ?? -1;
 		vRemoveCurrent(); vAddNext();
 		vCurrentPos = vPickNextPos(); vCheckIfRepeat();
-		vRevealed = false;
+		vRevealed = false; vFuriganaRevealed = false;
 		await saveVocabState();
 	}
 	async function onVStillLearning() {
@@ -362,7 +365,7 @@
 		vWeightMap = { ...vWeightMap, [idxNow]: (vWeightMap[idxNow] ?? 1) + 1 };
 		vLastIdx = idxNow;
 		vCurrentPos = vPickNextPos(); vCheckIfRepeat();
-		vRevealed = false;
+		vRevealed = false; vFuriganaRevealed = false;
 		await saveVocabState();
 	}
 	async function onVUnlearn(idx) {
@@ -393,7 +396,7 @@
 
 	function vNextReview() {
 		if (!vReviewQueue.length) return;
-		vReviewRevealed = false; vReviewSwipeDeltaX = 0;
+		vReviewRevealed = false; vReviewFuriganaRevealed = false; vReviewSwipeDeltaX = 0;
 		vReviewPos = (vReviewPos + 1) % vReviewQueue.length;
 	}
 
@@ -403,7 +406,7 @@
 			return v && vReviewLevels.has(v.jlpt);
 		});
 		vReviewPos = 0;
-		vReviewRevealed = false;
+		vReviewRevealed = false; vReviewFuriganaRevealed = false;
 		vReviewStarted = true;
 	}
 
@@ -1406,7 +1409,7 @@
 				class="card"
 				role="button"
 				tabindex="0"
-				on:click={() => { if (showVocabInfo) { showVocabInfo = false; return; } if (!vRevealed) vRevealed = true; }}
+				on:click={() => { if (showVocabInfo) { showVocabInfo = false; return; } if (!vFuriganaRevealed) { vFuriganaRevealed = true; } else if (!vRevealed) { vRevealed = true; } }}
 				on:keydown={(e) => e.key === "Enter" && (vRevealed = true)}
 				on:touchstart|passive={onVTouchStart}
 				on:touchmove={onVTouchMove}
@@ -1425,11 +1428,12 @@
 						{#if vIsRepeat}<div class="repeat-badge">repeat entry</div>{/if}
 					{/key}
 					{#key vCurrentIdx}
-						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>{vCurrent?.w ?? ""}</div>
+						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
+							<ruby class="vocab-ruby">{vCurrent?.w ?? ""}<rt class:rt-hidden={!vFuriganaRevealed}>{vFuriganaRevealed ? (vCurrent?.r ?? "") : "\u00A0"}</rt></ruby>
+						</div>
 					{/key}
 					{#if vRevealed}
 						<div class="details">
-							<p class="vocab-reading">{vCurrent?.r ?? ""}</p>
 							{#if vCurrent?.m?.length}
 								<p class="meanings">{vCurrent.m.join(", ")}</p>
 							{/if}
@@ -1457,7 +1461,7 @@
 							{/if}
 						</div>
 					{:else}
-						<p class="tap-hint">tap to reveal</p>
+						<p class="tap-hint">{vFuriganaRevealed ? "tap for meaning" : "tap to reveal"}</p>
 					{/if}
 				</div>
 			</div>
@@ -1558,8 +1562,8 @@
 				class="card"
 				role="button"
 				tabindex="0"
-				on:click={() => { vReviewRevealed = !vReviewRevealed; }}
-				on:keydown={(e) => e.key === "Enter" && (vReviewRevealed = !vReviewRevealed)}
+				on:click={() => { if (!vReviewFuriganaRevealed) { vReviewFuriganaRevealed = true; } else { vReviewRevealed = !vReviewRevealed; } }}
+				on:keydown={(e) => e.key === "Enter" && (!vReviewFuriganaRevealed ? (vReviewFuriganaRevealed = true) : (vReviewRevealed = !vReviewRevealed))}
 				on:touchstart|passive={onVReviewTouchStart}
 				on:touchmove={onVReviewTouchMove}
 				on:touchend={onVReviewTouchEnd}
@@ -1574,11 +1578,12 @@
 							style="opacity: {Math.min(0.35, Math.abs(vReviewSwipeDeltaX) / 200)}"></div>
 					{/if}
 					{#key vReviewIdx}
-						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>{vReviewEntry?.w ?? ""}</div>
+						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
+							<ruby class="vocab-ruby">{vReviewEntry?.w ?? ""}<rt class:rt-hidden={!vReviewFuriganaRevealed}>{vReviewFuriganaRevealed ? (vReviewEntry?.r ?? "") : "\u00A0"}</rt></ruby>
+						</div>
 					{/key}
 					{#if vReviewRevealed}
 						<div class="details">
-							<p class="vocab-reading">{vReviewEntry?.r ?? ""}</p>
 							{#if vReviewEntry?.m?.length}
 								<p class="meanings">{vReviewEntry.m.join(", ")}</p>
 							{/if}
@@ -1606,18 +1611,16 @@
 							{/if}
 						</div>
 					{:else}
-						<p class="tap-hint">tap to reveal</p>
+						<p class="tap-hint">{vReviewFuriganaRevealed ? "tap for meaning" : "tap to reveal"}</p>
 					{/if}
 				</div>
 			</div>
-			<div class="review-nav" class:hidden={!vReviewRevealed}>
-				{#if vReviewRevealed}
-					<button class="review-btn review-unlearn"
-						on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
-					<button class="review-btn review-know"
-						on:click|stopPropagation={vNextReview}>Know It!</button>
-				{/if}
-			</div>
+			{#if vReviewRevealed}
+				<button class="review-btn review-unlearn"
+					on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
+				<button class="review-btn review-know"
+					on:click|stopPropagation={vNextReview}>Know It!</button>
+			{/if}
 		{/if}
 	</div>
 {/if}
@@ -1795,6 +1798,17 @@
 	.vocab-word {
 		font-size: clamp(2.8rem, 18vw, 5.5rem) !important;
 		letter-spacing: 0.05em;
+	}
+
+	.vocab-ruby rt {
+		font-size: 0.28em;
+		letter-spacing: 0.05em;
+		color: var(--c-muted2);
+		transition: opacity 0.2s ease;
+	}
+
+	.vocab-ruby rt.rt-hidden {
+		opacity: 0;
 	}
 
 	.vocab-reading {
