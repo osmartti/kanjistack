@@ -2046,8 +2046,8 @@
 	.kanji-char {
 		font-size: clamp(5rem, 38vw, 200px);
 		line-height: 1;
-		font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho",
-			"Noto Serif JP", "BIZ UDMincho", serif;
+		font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+			"Noto Sans JP", sans-serif;
 		color: var(--c-kanji);
 		text-shadow: 0 2px 24px rgba(255, 255, 255, 0.06);
 	}
