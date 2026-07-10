@@ -50,6 +50,9 @@
 	let onboardingDone = false;
 	let reviewPos = 0;
 	let reviewRevealed = false;
+	let reviewLevels = new Set([4, 3, 2, 1]);
+	let reviewStarted = false;
+	let reviewQueue = [];
 	let reviewSwipeDeltaX = 0;
 	let reviewSwipeActive = false;
 	let reviewTouchStartX = 0;
@@ -401,10 +404,16 @@
 	}
 
 	function startVocabReview() {
-		vReviewQueue = vLearnedVocab.filter((idx) => {
+		const q = vLearnedVocab.filter((idx) => {
 			const v = vocabList[idx];
 			return v && vReviewLevels.has(v.jlpt);
 		});
+		// Fisher-Yates shuffle
+		for (let i = q.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[q[i], q[j]] = [q[j], q[i]];
+		}
+		vReviewQueue = q;
 		vReviewPos = 0;
 		vReviewRevealed = false; vReviewFuriganaRevealed = false;
 		vReviewStarted = true;
@@ -548,23 +557,40 @@
 	}
 
 	// ── Review learned navigation ────────────────────────────────────────────
-	$: reviewKanji = learnedKanji.length
-		? kanjiList[learnedKanji[Math.min(reviewPos, learnedKanji.length - 1)]]
+	$: reviewKanji = reviewQueue.length
+		? kanjiList[reviewQueue[Math.min(reviewPos, reviewQueue.length - 1)]]
 		: null;
-	$: reviewKanjiIdx = learnedKanji.length
-		? learnedKanji[Math.min(reviewPos, learnedKanji.length - 1)]
+	$: reviewKanjiIdx = reviewQueue.length
+		? reviewQueue[Math.min(reviewPos, reviewQueue.length - 1)]
 		: -1;
+	function toggleKanjiReviewLevel(lvl) {
+		const s = new Set(reviewLevels);
+		if (s.has(lvl)) s.delete(lvl); else s.add(lvl);
+		reviewLevels = s;
+	}
+	function startKanjiReview() {
+		const q = learnedKanji.filter(i => reviewLevels.has(kanjiList[i]?.jlpt ?? 0));
+		// Fisher-Yates shuffle
+		for (let i = q.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[q[i], q[j]] = [q[j], q[i]];
+		}
+		reviewQueue = q;
+		reviewPos = 0;
+		reviewRevealed = false;
+		reviewStarted = true;
+	}
 	function nextReview() {
-		if (!learnedKanji.length) return;
+		if (!reviewQueue.length) return;
 		reviewRevealed = false;
 		reviewSwipeDeltaX = 0;
-		reviewPos = (reviewPos + 1) % learnedKanji.length;
+		reviewPos = (reviewPos + 1) % reviewQueue.length;
 	}
 	function prevReview() {
-		if (!learnedKanji.length) return;
+		if (!reviewQueue.length) return;
 		reviewRevealed = false;
 		reviewSwipeDeltaX = 0;
-		reviewPos = (reviewPos - 1 + learnedKanji.length) % learnedKanji.length;
+		reviewPos = (reviewPos - 1 + reviewQueue.length) % reviewQueue.length;
 	}
 
 	function onReviewTouchStart(e) {
@@ -666,6 +692,7 @@
 		swipeDeltaX = 0;
 		swipeActive = false;
 		if (p !== "review-vocab") vReviewStarted = false;
+		if (p !== "review-learned") reviewStarted = false;
 	}
 
 	function selectLang(lang) {
@@ -1146,14 +1173,16 @@
 {:else if page === "review-learned"}
 	<div class="screen column">
 		<div class="sub-header">
-			<button class="back-btn" on:click={() => navigate("learn")}
+			<button class="back-btn" on:click={() => { reviewStarted = false; navigate("learn"); }}
 				>‹ Back</button
 			>
 			<span class="sub-title">Review Learned</span>
 			<span class="sub-count"
-				>{learnedKanji.length
-					? `${Math.min(reviewPos + 1, learnedKanji.length)} / ${learnedKanji.length}`
-					: "0"}</span
+				>{#if reviewStarted && reviewQueue.length}
+					{Math.min(reviewPos + 1, reviewQueue.length)} / {reviewQueue.length}
+				{:else}
+					{learnedKanji.length} learned
+				{/if}</span
 			>
 			<Menu
 				{page}
@@ -1174,6 +1203,31 @@
 			<div class="screen center">
 				<p class="muted">No learned kanji yet.</p>
 			</div>
+		{:else if !reviewStarted}
+			<div class="screen center">
+				<p class="review-pick-title">Select levels to review</p>
+				<div class="review-level-grid">
+					{#each [[4,"N5"],[3,"N4"],[2,"N2/N3"],[1,"N1/N2"]] as [lvl, label]}
+						{@const count = learnedKanji.filter(i => kanjiList[i]?.jlpt === lvl).length}
+						<button
+							class="review-level-btn"
+							class:review-level-active={reviewLevels.has(lvl)}
+							disabled={count === 0}
+							on:click={() => toggleKanjiReviewLevel(lvl)}
+						>
+							<span class="rl-label">{label}</span>
+							<span class="rl-count">{count} kanji</span>
+						</button>
+					{/each}
+				</div>
+				<button
+					class="review-start-btn"
+					disabled={learnedKanji.filter(i => kanjiList[i] && reviewLevels.has(kanjiList[i].jlpt ?? 0)).length === 0}
+					on:click={startKanjiReview}
+				>Review {learnedKanji.filter(i => kanjiList[i] && reviewLevels.has(kanjiList[i].jlpt ?? 0)).length} kanji</button>
+			</div>
+		{:else if reviewQueue.length === 0}
+			<div class="screen center"><p class="muted">No kanji match the selected levels.</p></div>
 		{:else}
 			<div
 				class="card"
@@ -1459,7 +1513,7 @@
 								<span class="badge">JLPT {VOCAB_JLPT_MAP[vCurrent.jlpt] ?? `N${vCurrent.jlpt}`}</span>
 							{/if}
 							{#if vCurrent?.w}
-								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vCurrent.w)}%23sentences"
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vCurrent.w)}%23words"
 									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
 							{/if}
 						</div>
@@ -1609,7 +1663,7 @@
 								<span class="badge">JLPT {VOCAB_JLPT_MAP[vReviewEntry.jlpt] ?? `N${vReviewEntry.jlpt}`}</span>
 							{/if}
 							{#if vReviewEntry?.w}
-								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vReviewEntry.w)}%23sentences"
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vReviewEntry.w)}%23words"
 									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
 							{/if}
 						</div>
@@ -1618,12 +1672,14 @@
 					{/if}
 				</div>
 			</div>
-			{#if vReviewRevealed}
-				<button class="review-btn review-unlearn"
-					on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
-				<button class="review-btn review-know"
-					on:click|stopPropagation={vNextReview}>Know It!</button>
-			{/if}
+			<div class="review-nav" class:hidden={!vReviewRevealed}>
+				{#if vReviewRevealed}
+					<button class="review-btn review-unlearn"
+						on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
+					<button class="review-btn review-know"
+						on:click|stopPropagation={vNextReview}>Know It!</button>
+				{/if}
+			</div>
 		{/if}
 	</div>
 {/if}
