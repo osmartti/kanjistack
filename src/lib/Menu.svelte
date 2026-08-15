@@ -78,7 +78,7 @@
   {#if showMenu}
     <div class="dropdown" transition:fly={{ y: -6, duration: 150 }}>
       <button class="dd-item dd-group" on:click|stopPropagation={onViewToggle}>
-        <span class:group-active={page === 'stack-current' || page === 'vocab-stack-current' || page === 'stack-learned' || page === 'review-learned' || page === 'vocab-learned' || page === 'review-vocab'}>View</span>
+        <span class:group-active={page === 'stack-current' || page === 'vocab-stack-current' || page === 'stack-learned' || page === 'review-learned' || page === 'vocab-learned' || page === 'review-vocab' || page === 'stack-starred' || page === 'vocab-starred' || page === 'review-starred' || page === 'review-vocab-starred'}>View</span>
         <span class="chevron">{showViewMenu ? '▴' : '▾'}</span>
       </button>
       {#if showViewMenu}
@@ -94,6 +94,14 @@
           <button class="dd-item sub-item" class:dd-active={page === 'review-learned' || page === 'review-vocab'} on:click={() => navigate(vocabMode ? 'review-vocab' : 'review-learned')}>
             Review Learned
             {#if page === 'review-learned' || page === 'review-vocab'}<span class="check">✓</span>{/if}
+          </button>
+          <button class="dd-item sub-item" class:dd-active={page === 'stack-starred' || page === 'vocab-starred'} on:click={() => navigate(vocabMode ? 'vocab-starred' : 'stack-starred')}>
+            Starred
+            {#if page === 'stack-starred' || page === 'vocab-starred'}<span class="check">✓</span>{/if}
+          </button>
+          <button class="dd-item sub-item" class:dd-active={page === 'review-starred' || page === 'review-vocab-starred'} on:click={() => navigate(vocabMode ? 'review-vocab-starred' : 'review-starred')}>
+            Review Starred
+            {#if page === 'review-starred' || page === 'review-vocab-starred'}<span class="check">✓</span>{/if}
           </button>
         </div>
       {/if}
