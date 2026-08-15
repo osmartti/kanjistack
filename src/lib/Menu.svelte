@@ -57,6 +57,12 @@
     dispatch('reset');
   }
 
+  function openCoffee() {
+    showMenu = false;
+    closeAll();
+    window.open('https://buymeacoffee.com/oussdev', '_blank', 'noopener,noreferrer');
+  }
+
   function onWindowClick(e) {
     if (showMenu && !e.target.closest?.('.menu-wrap')) {
       showMenu = false;
@@ -138,6 +144,12 @@
       <button class="dd-item" class:dd-active={page === 'data'} on:click={() => navigate('data')}>
         <span>Data</span>
         {#if page === 'data'}<span class="check">✓</span>{/if}
+      </button>
+
+      <div class="dd-divider"></div>
+
+      <button class="dd-item" on:click={openCoffee}>
+        <span>Buy me a coffee ☕</span>
       </button>
 
       <div class="dd-divider"></div>
