@@ -712,6 +712,130 @@
 		}
 	}
 
+	// ── Progress export / import ─────────────────────────────────────────────
+	// Builds a fresh learning window (skipping already-learned entries) starting
+	// from index 0 — used after importing progress, since we intentionally do
+	// not preserve the exact window/weights across export/import.
+	function buildFreshWindow(totalLength, learnedIdxs, windowSize) {
+		const learnedSet = new Set(learnedIdxs);
+		const win = [];
+		let i = 0;
+		for (; i < totalLength && win.length < windowSize; i++) {
+			if (!learnedSet.has(i)) win.push(i);
+		}
+		return { window: win, nextIndex: i };
+	}
+
+	let dataStatus = null; // { type: 'success' | 'error', message: string }
+	let dataFileInput;
+
+	function buildProgressExport() {
+		return {
+			version: 1,
+			exportedAt: new Date().toISOString(),
+			kanji: {
+				learned: learnedKanji,
+				readingLearned,
+			},
+			vocab: {
+				learned: vLearnedVocab,
+			},
+		};
+	}
+
+	function downloadProgress() {
+		try {
+			const data = buildProgressExport();
+			const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			const stamp = new Date().toISOString().slice(0, 10);
+			a.href = url;
+			a.download = `kanjistack-progress-${stamp}.json`;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+			dataStatus = { type: "success", message: "Progress downloaded." };
+		} catch (e) {
+			console.warn("downloadProgress failed:", e);
+			dataStatus = { type: "error", message: "Could not download progress." };
+		}
+	}
+
+	function triggerImport() {
+		dataStatus = null;
+		dataFileInput?.click();
+	}
+
+	async function handleImportFile(e) {
+		const file = e.target.files?.[0];
+		e.target.value = ""; // allow re-selecting the same file again later
+		if (!file) return;
+
+		if (!confirm("Uploading a file will overwrite your current progress. Continue?")) {
+			return;
+		}
+
+		try {
+			const text = await file.text();
+			const parsed = JSON.parse(text);
+			const importedLearnedKanji = Array.isArray(parsed?.kanji?.learned) ? parsed.kanji.learned : null;
+			const importedLearnedVocab = Array.isArray(parsed?.vocab?.learned) ? parsed.vocab.learned : null;
+
+			if (!importedLearnedKanji || !importedLearnedVocab) {
+				throw new Error("File does not look like a KanjiStack progress export.");
+			}
+
+			// Apply kanji progress
+			learnedKanji = [...new Set(importedLearnedKanji)].filter(
+				(i) => Number.isInteger(i) && i >= 0 && i < kanjiList.length,
+			);
+			readingLearned = (parsed.kanji.readingLearned && typeof parsed.kanji.readingLearned === "object")
+				? parsed.kanji.readingLearned
+				: {};
+			const { window: freshWindow, nextIndex: freshNext } = buildFreshWindow(kanjiList.length, learnedKanji, WINDOW_SIZE);
+			windowKanji = freshWindow;
+			nextKanjiIndex = freshNext;
+			droppedCount = learnedKanji.length;
+			currentPos = 0;
+			weightMap = {};
+			seenSet = new Set();
+			lastKanjiIndex = -1;
+			isRepeat = false;
+			onboardingDone = true;
+			showOnboarding = false;
+
+			// Apply vocab progress
+			vLearnedVocab = [...new Set(importedLearnedVocab)].filter(
+				(i) => Number.isInteger(i) && i >= 0 && i < vocabList.length,
+			);
+			const { window: freshVWindow, nextIndex: freshVNext } = buildFreshWindow(vocabList.length, vLearnedVocab, WINDOW_SIZE);
+			vWindowVocab = freshVWindow;
+			vNextIdx = freshVNext;
+			vDroppedCount = vLearnedVocab.length;
+			vCurrentPos = 0;
+			vWeightMap = {};
+			vSeenSet = new Set();
+			vLastIdx = -1;
+			vIsRepeat = false;
+			vOnboardingDone = true;
+			showVocabOnboarding = false;
+
+			await Promise.all([saveState(), saveVocabState()]);
+			dataStatus = {
+				type: "success",
+				message: `Imported ${learnedKanji.length} kanji and ${vLearnedVocab.length} words.`,
+			};
+		} catch (err) {
+			console.warn("handleImportFile failed:", err);
+			dataStatus = {
+				type: "error",
+				message: "Could not import file. Make sure it's a valid KanjiStack progress export.",
+			};
+		}
+	}
+
 	onMount(async () => {
 		try {
 			const [kanjiRes, vocabRes] = await Promise.all([
@@ -820,6 +944,9 @@
 			Pre-learned kanji skip the learning window and go directly to your
 			Learned list.
 		</p>
+		<button class="onboard-restore" on:click={() => navigate("data")}
+			>Have a backup? Restore progress</button
+		>
 	</div>
 {:else if page === "learn"}
 	<div class="screen column">
@@ -1496,6 +1623,9 @@
 					</button>
 				</div>
 				<p class="onboard-note">Pre-learned words go directly to your Learned list.</p>
+				<button class="onboard-restore" on:click={() => navigate("data")}
+					>Have a backup? Restore progress</button
+				>
 			</div>
 		{:else if vComplete}
 			<div class="screen center">
@@ -1718,6 +1848,57 @@
 				{/if}
 			</div>
 		{/if}
+	</div>
+{:else if page === "data"}
+	<div class="screen column">
+		<div class="sub-header">
+			<button class="back-btn" on:click={() => navigate(vocabMode ? "vocab-learn" : "learn")}
+				>‹ Back</button
+			>
+			<span class="sub-title">Data</span>
+			<Menu
+				{page}
+				{isDark}
+				{availableLangs}
+				{selectedLang}
+				{LANG_NAMES}
+				{vocabMode}
+				on:navigate={(e) => navigate(e.detail)}
+				on:selectlang={(e) => selectLang(e.detail)}
+				on:toggletheme={() => {
+					isDark = !isDark;
+					saveState();
+				}}
+				on:reset={confirmReset}
+			/>
+		</div>
+
+		<div class="screen center data-page">
+			<p class="data-desc">
+				Back up what you've learned, or restore progress from a
+				previous backup.
+			</p>
+
+			<button class="data-btn data-download" on:click={downloadProgress}>
+				Download Progress
+			</button>
+			<button class="data-btn data-upload" on:click={triggerImport}>
+				Upload Progress
+			</button>
+			<input
+				type="file"
+				accept="application/json"
+				bind:this={dataFileInput}
+				on:change={handleImportFile}
+				style="display: none;"
+			/>
+
+			{#if dataStatus}
+				<p class="data-status" class:data-status-error={dataStatus.type === "error"}>
+					{dataStatus.message}
+				</p>
+			{/if}
+		</div>
 	</div>
 {/if}
 
@@ -1991,6 +2172,61 @@
 
 	.review-start-btn:not(:disabled):hover {
 		background: #16a34a;
+	}
+
+	.data-page {
+		gap: 1rem;
+		padding: 0 1.5rem;
+		text-align: center;
+	}
+
+	.data-desc {
+		color: var(--c-muted2);
+		font-size: 0.9rem;
+		line-height: 1.5;
+		max-width: 360px;
+		margin: 0 0 0.5rem;
+	}
+
+	.data-btn {
+		width: 100%;
+		max-width: 280px;
+		padding: 0.85rem 1.5rem;
+		border-radius: 50px;
+		font-size: 1rem;
+		font-weight: 600;
+		cursor: pointer;
+		border: none;
+		transition: background 0.15s, opacity 0.15s;
+	}
+
+	.data-download {
+		background: #22c55e;
+		color: #fff;
+	}
+
+	.data-download:hover {
+		background: #16a34a;
+	}
+
+	.data-upload {
+		background: var(--c-bg3);
+		color: var(--c-text);
+		border: 1px solid var(--c-border);
+	}
+
+	.data-upload:hover {
+		background: var(--c-item-hover);
+	}
+
+	.data-status {
+		font-size: 0.88rem;
+		color: #22c55e;
+		max-width: 320px;
+	}
+
+	.data-status-error {
+		color: #f87171;
 	}
 
 	.icon-btn {
@@ -2583,6 +2819,21 @@
 		text-align: center;
 		max-width: 300px;
 		line-height: 1.5;
+	}
+
+	.onboard-restore {
+		background: none;
+		border: none;
+		color: var(--c-muted2);
+		font-size: 0.8rem;
+		text-decoration: underline;
+		cursor: pointer;
+		margin-top: 0.75rem;
+		padding: 0.25rem;
+	}
+
+	.onboard-restore:hover {
+		color: var(--c-text2);
 	}
 
 	/* ── Review navigation ── */

@@ -127,6 +127,13 @@
 
       <div class="dd-divider"></div>
 
+      <button class="dd-item" class:dd-active={page === 'data'} on:click={() => navigate('data')}>
+        <span>Data</span>
+        {#if page === 'data'}<span class="check">✓</span>{/if}
+      </button>
+
+      <div class="dd-divider"></div>
+
       <button class="dd-item dd-danger" on:click={resetProgress}>
         Reset Progress
       </button>
