@@ -862,6 +862,7 @@
 					{availableLangs}
 					{selectedLang}
 					{LANG_NAMES}
+					{vocabMode}
 					on:navigate={(e) => navigate(e.detail)}
 					on:selectlang={(e) => selectLang(e.detail)}
 					on:toggletheme={() => { isDark = !isDark; saveState(); }}
@@ -904,12 +905,6 @@
 						)}"
 					></div>
 				{/if}
-
-				{#key currentKanjiIdx}
-					{#if isRepeat}
-						<div class="repeat-badge">repeat entry</div>
-					{/if}
-				{/key}
 
 				{#key currentKanjiIdx}
 					<div class="kanji-char" in:fade={{ duration: 180 }}>
@@ -1058,6 +1053,7 @@
 				{availableLangs}
 				{selectedLang}
 				{LANG_NAMES}
+				{vocabMode}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => {
@@ -1099,6 +1095,50 @@
 			{/if}
 		</div>
 	</div>
+{:else if page === "vocab-stack-current"}
+	<div class="screen column">
+		<div class="sub-header">
+			<button class="back-btn" on:click={() => navigate("vocab-learn")}
+				>‹ Back</button
+			>
+			<span class="sub-title">Current Stack</span>
+			<span class="sub-count">{vWindowVocab.length}</span>
+			<Menu
+				{page}
+				{isDark}
+				{availableLangs}
+				{selectedLang}
+				{LANG_NAMES}
+				{vocabMode}
+				on:navigate={(e) => navigate(e.detail)}
+				on:selectlang={(e) => selectLang(e.detail)}
+				on:toggletheme={() => {
+					isDark = !isDark;
+					saveState();
+				}}
+				on:reset={confirmReset}
+			/>
+		</div>
+
+		<div class="stack-list">
+			{#if vWindowVocab.length === 0}
+				<p class="stack-empty">Nothing here yet.</p>
+			{:else}
+				{#each vWindowVocab as vIdx}
+					{@const v = vocabList[vIdx]}
+					{#if v}
+						<div class="stack-item">
+							<span class="stack-kanji">{v.w}</span>
+							<div class="stack-info">
+								<span class="stack-meaning">{v.m.slice(0, 3).join(", ")}</span>
+								<span class="stack-readings">{v.r}</span>
+							</div>
+						</div>
+					{/if}
+				{/each}
+			{/if}
+		</div>
+	</div>
 {:else if page === "stack-learned"}
 	<div class="screen column">
 		<div class="sub-header">
@@ -1113,6 +1153,7 @@
 				{availableLangs}
 				{selectedLang}
 				{LANG_NAMES}
+				{vocabMode}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => {
@@ -1190,6 +1231,7 @@
 				{availableLangs}
 				{selectedLang}
 				{LANG_NAMES}
+				{vocabMode}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => {
@@ -1411,7 +1453,7 @@
 						<line x1="12" y1="16" x2="12.01" y2="16" />
 					</svg>
 				</button>
-				<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+				<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES} {vocabMode}
 					on:navigate={(e) => navigate(e.detail)}
 					on:selectlang={(e) => selectLang(e.detail)}
 					on:toggletheme={() => { isDark = !isDark; saveState(); }}
@@ -1482,9 +1524,6 @@
 							style="opacity: {Math.min(0.35, Math.abs(vSwipeDeltaX) / 200)}"></div>
 					{/if}
 					{#key vCurrentIdx}
-						{#if vIsRepeat}<div class="repeat-badge">repeat entry</div>{/if}
-					{/key}
-					{#key vCurrentIdx}
 						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
 							<ruby class="vocab-ruby">{vCurrent?.w ?? ""}<rt class:rt-hidden={!vFuriganaRevealed}>{vFuriganaRevealed ? (vCurrent?.r ?? "") : "\u00A0"}</rt></ruby>
 						</div>
@@ -1496,7 +1535,6 @@
 							{/if}
 							{#if vCurrent?.ex}
 								<div class="reading-row ex-row">
-									<span class="r-label">Ex</span>
 									<div class="ex-block">
 										<div class="example">
 											{#each vCurrent.ex.f as part}
@@ -1513,7 +1551,7 @@
 								<span class="badge">JLPT {VOCAB_JLPT_MAP[vCurrent.jlpt] ?? `N${vCurrent.jlpt}`}</span>
 							{/if}
 							{#if vCurrent?.w}
-								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vCurrent.w)}%23words"
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vCurrent.w)}%23kanji"
 									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
 							{/if}
 						</div>
@@ -1538,7 +1576,7 @@
 			<button class="back-btn" on:click={() => navigate("vocab-learn")}>‹ Back</button>
 			<span class="sub-title">Vocab Learned</span>
 			<span class="sub-count">{vLearnedVocab.length}</span>
-			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES} {vocabMode}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => { isDark = !isDark; saveState(); }}
@@ -1576,7 +1614,7 @@
 					{vLearnedVocab.length} learned
 				{/if}
 			</span>
-			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES}
+			<Menu {page} {isDark} {availableLangs} {selectedLang} {LANG_NAMES} {vocabMode}
 				on:navigate={(e) => navigate(e.detail)}
 				on:selectlang={(e) => selectLang(e.detail)}
 				on:toggletheme={() => { isDark = !isDark; saveState(); }}
@@ -1646,7 +1684,6 @@
 							{/if}
 							{#if vReviewEntry?.ex}
 								<div class="reading-row ex-row">
-									<span class="r-label">Ex</span>
 									<div class="ex-block">
 										<div class="example">
 											{#each vReviewEntry.ex.f as part}
@@ -1663,7 +1700,7 @@
 								<span class="badge">JLPT {VOCAB_JLPT_MAP[vReviewEntry.jlpt] ?? `N${vReviewEntry.jlpt}`}</span>
 							{/if}
 							{#if vReviewEntry?.w}
-								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vReviewEntry.w)}%23words"
+								<a class="jisho-link" href="https://jisho.org/search/{encodeURIComponent(vReviewEntry.w)}%23kanji"
 									target="_blank" rel="noopener noreferrer" on:click|stopPropagation>jisho.org ↗</a>
 							{/if}
 						</div>
@@ -2073,30 +2110,6 @@
 
 	.swipe-left {
 		background: #dc2626;
-	}
-
-	.repeat-badge {
-		position: absolute;
-		top: 3.5vh;
-		left: 50%;
-		transform: translateX(-50%);
-		color: var(--c-repeat);
-		font-size: 0.68rem;
-		letter-spacing: 0.22em;
-		text-transform: uppercase;
-		pointer-events: none;
-		white-space: nowrap;
-		animation: repeatBlink 1.4s ease-in-out 3;
-	}
-
-	@keyframes repeatBlink {
-		0%,
-		100% {
-			opacity: 0.9;
-		}
-		50% {
-			opacity: 0.1;
-		}
 	}
 
 	.kanji-char {
