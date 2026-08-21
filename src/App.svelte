@@ -3,6 +3,22 @@
 	import { get, set } from "idb-keyval";
 	import { fade, fly } from "svelte/transition";
 	import Menu from "./lib/Menu.svelte";
+	import CookieBanner from "./lib/CookieBanner.svelte";
+
+	// If user previously accepted, load GA immediately on page load
+	if (typeof localStorage !== "undefined" && localStorage.getItem("cookie_consent") === "accepted") {
+		const gaScript = document.createElement("script");
+		gaScript.async = true;
+		gaScript.src = "https://www.googletagmanager.com/gtag/js?id=G-QQNTTVYMBC";
+		document.head.appendChild(gaScript);
+		window.dataLayer = window.dataLayer || [];
+		function gtag() {
+			window.dataLayer.push(arguments);
+		}
+		window.gtag = gtag;
+		gtag("js", new Date());
+		gtag("config", "G-QQNTTVYMBC");
+	}
 
 	const WINDOW_SIZE = 30;
 	const DB_KEY = "kanjistack_v2";  // bumped: list now sorted by difficulty
@@ -2403,6 +2419,8 @@
 		</div>
 	</div>
 {/if}
+
+<CookieBanner />
 
 <style>
 	:global(:root) {
