@@ -269,7 +269,13 @@
 
 	// Inserts idx back into a queue at a random position within the next
 	// "batch" (the upcoming windowSize items), instead of appending at the
-	// very end — so a "Still Learning" item resurfaces before too long.
+	// very end — so a "Still Learning" item resurfaces before too long. Since
+	// the window is a FIFO and this only bounds a *relative* position (not an
+	// absolute turn), heavy sustained "Still Learning" use can keep pushing
+	// an item back further via later insertions — intentional: the ~30-60
+	// window only holds under normal use, and naturally grows unbounded if a
+	// user is stuck relearning many items at once, rather than forcing a
+	// hard cap that would surface it before the user actually knows it.
 	function shuffleIntoQueue(queue, idx, windowSize) {
 		const maxPos = Math.min(windowSize, queue.length);
 		const pos = Math.floor(Math.random() * (maxPos + 1));
@@ -355,12 +361,7 @@
 		else if (vCurrentPos >= vWindowVocab.length) vCurrentPos = 0;
 	}
 	function vPickNextPos() {
-		if (vWindowVocab.length <= 1) return 0;
-		const candidates = vWindowVocab
-			.map((idx, pos) => pos)
-			.filter((pos) => vWindowVocab[pos] !== vLastIdx);
-		const pool = candidates.length > 0 ? candidates : vWindowVocab.map((_, pos) => pos);
-		return pool[Math.floor(Math.random() * pool.length)];
+		return 0;
 	}
 	function vCheckIfRepeat() {
 		if (!vWindowVocab.length) { vIsRepeat = false; return; }
@@ -521,16 +522,11 @@
 		else if (currentPos >= windowKanji.length) currentPos = 0;
 	}
 
+	// The window is treated as a FIFO queue: removeCurrent() pops the shown
+	// item and addNext()/shuffleIntoQueue() pushes the next one to the back,
+	// so the next card to show is always the one now at the front (index 0).
 	function pickNextPos() {
-		if (windowKanji.length <= 1) return 0;
-
-		const candidates = windowKanji
-			.map((kanjiIdx, pos) => pos)
-			.filter((pos) => windowKanji[pos] !== lastKanjiIndex);
-
-		const pool = candidates.length > 0 ? candidates : windowKanji.map((_, pos) => pos);
-
-		return pool[Math.floor(Math.random() * pool.length)];
+		return 0;
 	}
 
 	function checkIfRepeat() {
