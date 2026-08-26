@@ -123,6 +123,11 @@
 	let vReviewTouchStartX = 0;
 	let vReviewTouchStartY = 0;
 
+	function vocabWordStyle(word) {
+		const len = [...(word ?? "")].length || 1;
+		return `--wlen: ${len};`;
+	}
+
 	function getFlyParams(targetSel) {
 		const kanjiEl = document.querySelector(".kanji-char");
 		const targetEl = document.querySelector(targetSel);
@@ -2040,7 +2045,7 @@
 							style="opacity: {Math.min(0.35, Math.abs(vSwipeDeltaX) / 200)}"></div>
 					{/if}
 					{#key vCurrentIdx}
-						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
+						<div class="kanji-char vocab-word" style={vocabWordStyle(vCurrent?.w)} in:fade={{ duration: 180 }}>
 							<ruby class="vocab-ruby">{vCurrent?.w ?? ""}<rt class:rt-hidden={!vFuriganaRevealed}>{vFuriganaRevealed ? (vCurrent?.r ?? "") : "\u00A0"}</rt></ruby>
 						</div>
 					{/key}
@@ -2221,7 +2226,7 @@
 							style="opacity: {Math.min(0.35, Math.abs(vReviewSwipeDeltaX) / 200)}"></div>
 					{/if}
 					{#key vReviewIdx}
-						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
+						<div class="kanji-char vocab-word" style={vocabWordStyle(vReviewEntry?.w)} in:fade={{ duration: 180 }}>
 							<ruby class="vocab-ruby">{vReviewEntry?.w ?? ""}<rt class:rt-hidden={!vReviewFuriganaRevealed}>{vReviewFuriganaRevealed ? (vReviewEntry?.r ?? "") : "\u00A0"}</rt></ruby>
 						</div>
 					{/key}
@@ -2311,7 +2316,7 @@
 							style="opacity: {Math.min(0.35, Math.abs(vReviewSwipeDeltaX) / 200)}"></div>
 					{/if}
 					{#key vReviewIdx}
-						<div class="kanji-char vocab-word" in:fade={{ duration: 180 }}>
+						<div class="kanji-char vocab-word" style={vocabWordStyle(vReviewEntry?.w)} in:fade={{ duration: 180 }}>
 							<ruby class="vocab-ruby">{vReviewEntry?.w ?? ""}<rt class:rt-hidden={!vReviewFuriganaRevealed}>{vReviewFuriganaRevealed ? (vReviewEntry?.r ?? "") : "\u00A0"}</rt></ruby>
 						</div>
 					{/key}
@@ -2589,8 +2594,16 @@
 	}
 
 	.vocab-word {
-		font-size: clamp(2.8rem, 18vw, 5.5rem) !important;
+		--wlen: 1;
+		/* Shrink as the word gets longer so it keeps fitting the screen width;
+		   falls back to wrapping onto extra rows if it still can't fit. */
+		font-size: clamp(1.5rem, min(18vw, calc(78vw / var(--wlen))), 5.5rem) !important;
 		letter-spacing: 0.05em;
+		max-width: 100%;
+		min-width: 0;
+		text-align: center;
+		overflow-wrap: break-word;
+		word-break: break-word;
 	}
 
 	.vocab-ruby rt {
