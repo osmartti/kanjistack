@@ -30,12 +30,13 @@ export default defineConfig({
       workbox: {
         // Precache the built app shell (JS/CSS/HTML).
         globPatterns: ['**/*.{js,css,html,svg}'],
-        // Cache the large JSON datasets the first time they're fetched, then
-        // serve them from cache on every subsequent load (including offline).
+        // Cache the large JSON datasets so the app works offline, but always
+        // revalidate against the network in the background when online so
+        // updated kanji/vocab content is picked up (used on the next load).
         runtimeCaching: [
           {
             urlPattern: /\/(kanji|vocab)\.json$/,
-            handler: 'CacheFirst',
+            handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'kanjistack-datasets',
               expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 365 },
