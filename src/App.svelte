@@ -411,10 +411,23 @@
 			if (Math.abs(prev) < 60 && Math.abs(vReviewSwipeDeltaX) >= 60) vibrate(10);
 		}
 	}
+	function unstarCurrentReviewVocab() {
+		toggleStarVocab(vReviewIdx);
+		vReviewQueue = vReviewQueue.filter((i) => i !== vReviewIdx);
+		vReviewPos = Math.min(vReviewPos, Math.max(0, vReviewQueue.length - 1));
+		vReviewRevealed = false;
+		vReviewFuriganaRevealed = false;
+	}
 	function onVReviewTouchEnd() {
 		if (!vReviewSwipeActive) return; vReviewSwipeActive = false;
 		if (vReviewSwipeDeltaX > 60) vNextReview();
-		else if (vReviewSwipeDeltaX < -60) { onVUnlearn(vReviewIdx); vNextReview(); }
+		else if (vReviewSwipeDeltaX < -60) {
+			if (page === "review-vocab-starred") {
+				unstarCurrentReviewVocab();
+			} else {
+				onVUnlearn(vReviewIdx); vNextReview();
+			}
+		}
 		else vReviewSwipeDeltaX = 0;
 	}
 
@@ -689,13 +702,23 @@
 		if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8)
 			reviewSwipeDeltaX = dx;
 	}
+	function unstarCurrentReviewKanji() {
+		toggleStarKanji(reviewKanjiIdx);
+		reviewQueue = reviewQueue.filter((i) => i !== reviewKanjiIdx);
+		reviewPos = Math.min(reviewPos, Math.max(0, reviewQueue.length - 1));
+		reviewRevealed = false;
+	}
 	function onReviewTouchEnd() {
 		if (!reviewSwipeActive) return;
 		reviewSwipeActive = false;
 		if (reviewSwipeDeltaX > 60) nextReview();
 		else if (reviewSwipeDeltaX < -60) {
-			onUnlearn(reviewKanjiIdx);
-			nextReview();
+			if (page === "review-starred") {
+				unstarCurrentReviewKanji();
+			} else {
+				onUnlearn(reviewKanjiIdx);
+				nextReview();
+			}
 		} else reviewSwipeDeltaX = 0;
 	}
 
@@ -1928,12 +1951,7 @@
 				{#if reviewRevealed}
 					<button
 						class="review-btn review-unlearn"
-						on:click|stopPropagation={() => {
-							toggleStarKanji(reviewKanjiIdx);
-							reviewQueue = reviewQueue.filter((i) => i !== reviewKanjiIdx);
-							reviewPos = Math.min(reviewPos, Math.max(0, reviewQueue.length - 1));
-							reviewRevealed = false;
-						}}>Unstar</button
+						on:click|stopPropagation={unstarCurrentReviewKanji}>Unstar</button
 					>
 					<button
 						class="review-btn review-know"
@@ -2355,13 +2373,7 @@
 			<div class="review-nav" class:hidden={!vReviewRevealed}>
 				{#if vReviewRevealed}
 					<button class="review-btn review-unlearn"
-						on:click|stopPropagation={() => {
-							toggleStarVocab(vReviewIdx);
-							vReviewQueue = vReviewQueue.filter((i) => i !== vReviewIdx);
-							vReviewPos = Math.min(vReviewPos, Math.max(0, vReviewQueue.length - 1));
-							vReviewRevealed = false;
-							vReviewFuriganaRevealed = false;
-						}}>Unstar</button>
+						on:click|stopPropagation={unstarCurrentReviewVocab}>Unstar</button>
 					<button class="review-btn review-know"
 						on:click|stopPropagation={vNextReview}>Next</button>
 				{/if}
