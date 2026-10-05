@@ -421,12 +421,11 @@
 	function onVReviewTouchEnd() {
 		if (!vReviewSwipeActive) return; vReviewSwipeActive = false;
 		if (vReviewSwipeDeltaX > 60) vNextReview();
-		else if (vReviewSwipeDeltaX < -60) {
-			if (page === "review-vocab-starred") {
-				unstarCurrentReviewVocab();
-			} else {
-				onVUnlearn(vReviewIdx); vNextReview();
-			}
+		else if (
+			vReviewSwipeDeltaX < -60 &&
+			(page !== "review-vocab-starred" || vLearnedVocab.includes(vReviewIdx))
+		) {
+			onVUnlearn(vReviewIdx); vNextReview();
 		}
 		else vReviewSwipeDeltaX = 0;
 	}
@@ -712,13 +711,12 @@
 		if (!reviewSwipeActive) return;
 		reviewSwipeActive = false;
 		if (reviewSwipeDeltaX > 60) nextReview();
-		else if (reviewSwipeDeltaX < -60) {
-			if (page === "review-starred") {
-				unstarCurrentReviewKanji();
-			} else {
-				onUnlearn(reviewKanjiIdx);
-				nextReview();
-			}
+		else if (
+			reviewSwipeDeltaX < -60 &&
+			(page !== "review-starred" || learnedKanji.includes(reviewKanjiIdx))
+		) {
+			onUnlearn(reviewKanjiIdx);
+			nextReview();
 		} else reviewSwipeDeltaX = 0;
 	}
 
@@ -1822,6 +1820,13 @@
 					: 'transform 0.3s ease'}"
 			>
 				<div class="card-inner">
+					<button
+						class="star-btn starred"
+						on:click|stopPropagation={unstarCurrentReviewKanji}
+						aria-label="Unstar"
+						aria-pressed="true"
+					>★</button>
+
 					{#if reviewSwipeActive && Math.abs(reviewSwipeDeltaX) > 20}
 						<div
 							class="swipe-overlay"
@@ -1951,7 +1956,10 @@
 				{#if reviewRevealed}
 					<button
 						class="review-btn review-unlearn"
-						on:click|stopPropagation={unstarCurrentReviewKanji}>Unstar</button
+						on:click|stopPropagation={() => {
+							onUnlearn(reviewKanjiIdx);
+							nextReview();
+						}}>Unlearn</button
 					>
 					<button
 						class="review-btn review-know"
@@ -2327,6 +2335,13 @@
 					   transition: {vReviewSwipeActive ? 'none' : 'transform 0.3s ease'}"
 			>
 				<div class="card-inner">
+					<button
+						class="star-btn starred"
+						on:click|stopPropagation={unstarCurrentReviewVocab}
+						aria-label="Unstar"
+						aria-pressed="true"
+					>★</button>
+
 					{#if vReviewSwipeActive && Math.abs(vReviewSwipeDeltaX) > 20}
 						<div class="swipe-overlay"
 							class:swipe-right={vReviewSwipeDeltaX > 0}
@@ -2373,7 +2388,7 @@
 			<div class="review-nav" class:hidden={!vReviewRevealed}>
 				{#if vReviewRevealed}
 					<button class="review-btn review-unlearn"
-						on:click|stopPropagation={unstarCurrentReviewVocab}>Unstar</button>
+						on:click|stopPropagation={() => { onVUnlearn(vReviewIdx); vNextReview(); }}>Unlearn</button>
 					<button class="review-btn review-know"
 						on:click|stopPropagation={vNextReview}>Next</button>
 				{/if}
